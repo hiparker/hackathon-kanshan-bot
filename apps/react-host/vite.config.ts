@@ -7,6 +7,7 @@ const threeRuntimeSource = new URL('../../packages/kanshan-three-runtime/src/ind
 export default defineConfig(({ mode }) => {
   const envDir = new URL('.', import.meta.url).pathname;
   const env = loadEnv(mode, envDir, '');
+  const kanshanApiBaseUrl = env.VITE_KANSHAN_API_BASE_URL || 'http://localhost:8787';
 
   return {
     plugins: [react()],
@@ -23,6 +24,10 @@ export default defineConfig(({ mode }) => {
           target: env.VITE_OPENAI_BASE_URL,
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/proxy-openai/, ''),
+        },
+        '/api': {
+          target: kanshanApiBaseUrl,
+          changeOrigin: true,
         },
       },
     },

@@ -9,7 +9,16 @@ import {
   resolveKanshanClipName,
   previewActionGroups,
 } from './kanshanActionConfig';
-import { fetchMockDefaultState, fetchMockProps, fetchMockTasks, type KanshanDefaultState, type KanshanPropItem, type KanshanTaskItem } from './kanshanMenuData';
+import {
+  fetchKanshanDefaultState,
+  fetchKanshanProps,
+  fetchKanshanTasks,
+  progressKanshanTask,
+  useKanshanProp,
+  type KanshanDefaultState,
+  type KanshanPropItem,
+  type KanshanTaskItem,
+} from './kanshanMenuData';
 import { kanshanModelConfig } from './kanshanModelConfig';
 import { KanshanModelPreview, type KanshanModelPreviewHandle, type KanshanRewardToast } from './KanshanModelPreview';
 import { streamChat } from './chatService';
@@ -22,6 +31,14 @@ const DEFAULT_STATE_POLL_MS = 10000;
 const TEMPORARY_ACTION_MIN_MS = 1800;
 const CHAT_TYPING_INTERVAL_MS = 80;
 const CHAT_TYPING_BATCH_SIZE = 2;
+
+function resolveActionHint(actionHint: string): PetAction | null {
+  if (actionHint === 'happy-temporary') return 'happy';
+  if (actionHint === 'exercise-temporary') return 'run';
+  if (actionHint === 'recover') return 'happy';
+  if (actionHint === 'revive') return 'revive';
+  return null;
+}
 
 function App() {
   const previewRef = useRef<KanshanModelPreviewHandle | null>(null);
@@ -119,14 +136,14 @@ function App() {
   }, []);
 
   const fetchAndStoreDefaultState = useCallback(async () => {
-    const nextDefaultState = await fetchMockDefaultState();
+    const nextDefaultState = await fetchKanshanDefaultState();
     setDefaultAction(nextDefaultState.action);
     if (nextDefaultState.action === 'idle') setIsDead(false);
     return nextDefaultState;
   }, []);
 
   const fetchAndApplyDefaultState = useCallback(async () => {
-    const nextDefaultState = await fetchMockDefaultState();
+    const nextDefaultState = await fetchKanshanDefaultState();
     applyDefaultState(nextDefaultState);
     return nextDefaultState;
   }, [applyDefaultState]);
@@ -151,7 +168,7 @@ function App() {
     let isCurrent = true;
 
     setMenuDataStatus('loading');
-    Promise.all([fetchMockProps(), fetchMockTasks(), fetchMockDefaultState()])
+    Promise.all([fetchKanshanProps(), fetchKanshanTasks(), fetchKanshanDefaultState()])
       .then(([nextPropItems, nextTaskItems, nextDefaultState]) => {
         if (!isCurrent) return;
         setPropItems(nextPropItems);
@@ -251,12 +268,37 @@ function App() {
   }, []);
 
   const handleSelectProp = useCallback((item: KanshanPropItem) => {
+    if (item.count <= 0) return;
     showRewardToast({ label: item.name, icon: { propId: item.id } });
-  }, [showRewardToast]);
+    void useKanshanProp(item.id)
+      .then(async ({ actionHint }) => {
+        const hintedAction = resolveActionHint(actionHint);
+        if (hintedAction) playAction(hintedAction);
+
+        const [nextPropItems] = await Promise.all([
+          fetchKanshanProps(),
+          fetchAndApplyDefaultState(),
+        ]);
+        setPropItems(nextPropItems);
+        setMenuDataStatus('ready');
+      })
+      .catch(() => setMenuDataStatus('error'));
+  }, [fetchAndApplyDefaultState, playAction, showRewardToast]);
 
   const handleSelectTask = useCallback((item: KanshanTaskItem) => {
     showRewardToast({ label: item.taskName, icon: 'task' });
-  }, [showRewardToast]);
+    void progressKanshanTask(item.id)
+      .then(async ({ rewardsGranted }) => {
+        const [nextTaskItems, nextPropItems] = await Promise.all([
+          fetchKanshanTasks(),
+          rewardsGranted.length > 0 ? fetchKanshanProps() : Promise.resolve(propItems),
+        ]);
+        setTaskItems(nextTaskItems);
+        setPropItems(nextPropItems);
+        setMenuDataStatus('ready');
+      })
+      .catch(() => setMenuDataStatus('error'));
+  }, [propItems, showRewardToast]);
 
   const submitChat = useCallback(async () => {
     const message = chatInput.trim();

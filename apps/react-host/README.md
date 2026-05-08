@@ -5,8 +5,20 @@
 ## 运行
 
 ```bash
+cd services/kanshan-server
+make run
+
 pnpm --filter @kanshan/react-host dev
 ```
+
+前端会通过 Vite proxy 把本地 `/api/*` 请求转发到后端，默认地址是 `http://localhost:8787`。如需修改，在 `apps/react-host/.env.local` 里配置：
+
+```bash
+VITE_KANSHAN_API_BASE_URL=http://localhost:8787
+VITE_KANSHAN_AUTH_CODE=local-dev
+```
+
+当前后端登录是 P0 mock：前端会自动把 `VITE_KANSHAN_AUTH_CODE` 当作知乎 code 调 `POST /api/auth/zhihu`，并把返回的 session token 存到 `localStorage`，后续库存、状态、任务接口都会带 `X-Session-Token`。
 
 ## 更换 GLB 模型
 

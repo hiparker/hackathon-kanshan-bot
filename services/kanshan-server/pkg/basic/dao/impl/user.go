@@ -27,6 +27,9 @@ func (d *userDao) Upsert(ctx context.Context, u dao.User) (dao.User, error) {
 	if err != nil {
 		return dao.User{}, err
 	}
+	if err := d.seedDefaultInventory(ctx, u.ID, now); err != nil {
+		return dao.User{}, err
+	}
 	return u, nil
 }
 
@@ -51,4 +54,23 @@ func nullable(s string) any {
 		return nil
 	}
 	return s
+}
+
+func (d *userDao) seedDefaultInventory(ctx context.Context, userID string, now int64) error {
+	_, err := d.db.ExecContext(ctx, `
+		INSERT INTO user_items(user_id, item_id, qty, last_obtained_at)
+		VALUES
+			(?, 'fish-jerky', 12, ?),
+			(?, 'nutrition-can', 5, ?),
+			(?, 'cold-medicine', 3, ?),
+			(?, 'revive-feather', 1, ?),
+			(?, 'energy-drink', 8, ?)
+		ON CONFLICT(user_id, item_id) DO NOTHING`,
+		userID, now,
+		userID, now,
+		userID, now,
+		userID, now,
+		userID, now,
+	)
+	return err
 }
