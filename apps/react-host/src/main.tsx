@@ -1,0 +1,427 @@
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import type { PetAction } from '@kanshan/bridge';
+import {
+  kanshanActionMeta,
+  formatKanshanActionClip,
+  kanshanRawClipConfig,
+  kanshanSemanticClipNames,
+  resolveKanshanClipName,
+  previewActionGroups,
+} from './kanshanActionConfig';
+import { fetchMockDefaultState, fetchMockProps, fetchMockTasks, type KanshanDefaultState, type KanshanPropItem, type KanshanTaskItem } from './kanshanMenuData';
+import { kanshanModelConfig } from './kanshanModelConfig';
+import { KanshanModelPreview, type KanshanModelPreviewHandle, type KanshanRewardToast } from './KanshanModelPreview';
+import { streamChat } from './chatService';
+import './styles.css';
+
+type MenuDataStatus = 'idle' | 'loading' | 'ready' | 'error';
+type RewardToast = KanshanRewardToast;
+
+const DEFAULT_STATE_POLL_MS = 10000;
+const TEMPORARY_ACTION_MIN_MS = 1800;
+const CHAT_TYPING_INTERVAL_MS = 80;
+const CHAT_TYPING_BATCH_SIZE = 2;
+
+function App() {
+  const previewRef = useRef<KanshanModelPreviewHandle | null>(null);
+  const [defaultAction, setDefaultAction] = useState<PetAction>('idle');
+  const [activeAction, setActiveAction] = useState<PetAction>('idle');
+  const [actionRevision, setActionRevision] = useState(0);
+  const defaultStateTimerRef = useRef<number | null>(null);
+  const temporaryFallbackTimerRef = useRef<number | null>(null);
+  const temporaryActionRef = useRef<{ token: number; minEndAt: number } | null>(null);
+  const isFollowingDefaultRef = useRef(true);
+  const [isDead, setIsDead] = useState(false);
+  const [clipNames, setClipNames] = useState<string[]>([]);
+  const [propItems, setPropItems] = useState<KanshanPropItem[]>([]);
+  const [taskItems, setTaskItems] = useState<KanshanTaskItem[]>([]);
+  const [menuDataStatus, setMenuDataStatus] = useState<MenuDataStatus>('idle');
+  const [rewardToast, setRewardToast] = useState<RewardToast>(null);
+  const [chatInput, setChatInput] = useState('');
+  const [chatText, setChatText] = useState('');
+  const [chatError, setChatError] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [lastUserMessage, setLastUserMessage] = useState('');
+  const chatAbortControllerRef = useRef<AbortController | null>(null);
+  const chatDisplayTimerRef = useRef<number | null>(null);
+  const pendingChatTextRef = useRef('');
+  const visibleChatTextRef = useRef('');
+  const isChatStreamDoneRef = useRef(false);
+  const semanticClipRows = kanshanRawClipConfig.map((item) => ({
+    semanticClipName: item.label,
+    rawClipName: item.clipName,
+    note: item.note,
+  }));
+  const rawClipNameSet = new Set(clipNames);
+  const missingSemanticClipNames = kanshanSemanticClipNames.filter((clipName) => !rawClipNameSet.has(resolveKanshanClipName(clipName)));
+
+  const clearTemporaryFallbackTimer = useCallback(() => {
+    if (temporaryFallbackTimerRef.current === null) return;
+
+    window.clearTimeout(temporaryFallbackTimerRef.current);
+    temporaryFallbackTimerRef.current = null;
+  }, []);
+
+  const clearDefaultStateTimer = useCallback(() => {
+    if (defaultStateTimerRef.current === null) return;
+
+    window.clearTimeout(defaultStateTimerRef.current);
+    defaultStateTimerRef.current = null;
+  }, []);
+
+  const clearChatDisplayTimer = useCallback(() => {
+    if (chatDisplayTimerRef.current === null) return;
+
+    window.clearTimeout(chatDisplayTimerRef.current);
+    chatDisplayTimerRef.current = null;
+  }, []);
+
+  const flushChatDisplay = useCallback(() => {
+    clearChatDisplayTimer();
+
+    const step = () => {
+      if (pendingChatTextRef.current.length === 0) {
+        chatDisplayTimerRef.current = null;
+        return;
+      }
+
+      const nextChunk = pendingChatTextRef.current.slice(0, CHAT_TYPING_BATCH_SIZE);
+      pendingChatTextRef.current = pendingChatTextRef.current.slice(CHAT_TYPING_BATCH_SIZE);
+      visibleChatTextRef.current += nextChunk;
+      setChatText(visibleChatTextRef.current);
+
+      if (pendingChatTextRef.current.length === 0) {
+        chatDisplayTimerRef.current = null;
+        return;
+      }
+
+      chatDisplayTimerRef.current = window.setTimeout(step, CHAT_TYPING_INTERVAL_MS);
+    };
+
+    step();
+  }, [clearChatDisplayTimer]);
+
+  const enqueueChatText = useCallback((chunk: string) => {
+    if (!chunk) return;
+    pendingChatTextRef.current += chunk;
+    if (chatDisplayTimerRef.current === null) {
+      flushChatDisplay();
+    }
+  }, [flushChatDisplay]);
+
+  const applyDefaultState = useCallback((nextDefaultState: KanshanDefaultState) => {
+    isFollowingDefaultRef.current = true;
+    setDefaultAction(nextDefaultState.action);
+    setActiveAction(nextDefaultState.action);
+    setActionRevision((current) => current + 1);
+    if (nextDefaultState.action === 'idle') setIsDead(false);
+  }, []);
+
+  const fetchAndStoreDefaultState = useCallback(async () => {
+    const nextDefaultState = await fetchMockDefaultState();
+    setDefaultAction(nextDefaultState.action);
+    if (nextDefaultState.action === 'idle') setIsDead(false);
+    return nextDefaultState;
+  }, []);
+
+  const fetchAndApplyDefaultState = useCallback(async () => {
+    const nextDefaultState = await fetchMockDefaultState();
+    applyDefaultState(nextDefaultState);
+    return nextDefaultState;
+  }, [applyDefaultState]);
+
+  const scheduleDefaultStatePoll = useCallback(() => {
+    clearDefaultStateTimer();
+    defaultStateTimerRef.current = window.setTimeout(() => {
+      if (temporaryActionRef.current) {
+        scheduleDefaultStatePoll();
+        return;
+      }
+
+      fetchAndStoreDefaultState()
+        .then((nextDefaultState) => {
+          if (isFollowingDefaultRef.current) applyDefaultState(nextDefaultState);
+        })
+        .finally(scheduleDefaultStatePoll);
+    }, DEFAULT_STATE_POLL_MS);
+  }, [applyDefaultState, clearDefaultStateTimer, fetchAndStoreDefaultState]);
+
+  const loadMenuData = useCallback(() => {
+    let isCurrent = true;
+
+    setMenuDataStatus('loading');
+    Promise.all([fetchMockProps(), fetchMockTasks(), fetchMockDefaultState()])
+      .then(([nextPropItems, nextTaskItems, nextDefaultState]) => {
+        if (!isCurrent) return;
+        setPropItems(nextPropItems);
+        setTaskItems(nextTaskItems);
+        applyDefaultState(nextDefaultState);
+        setMenuDataStatus('ready');
+      })
+      .catch(() => {
+        if (!isCurrent) return;
+        setMenuDataStatus('error');
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [applyDefaultState]);
+
+  useEffect(() => loadMenuData(), [loadMenuData]);
+
+  useEffect(() => {
+    scheduleDefaultStatePoll();
+    return () => {
+      chatAbortControllerRef.current?.abort();
+      clearChatDisplayTimer();
+      clearDefaultStateTimer();
+      clearTemporaryFallbackTimer();
+    };
+  }, [clearDefaultStateTimer, clearTemporaryFallbackTimer, scheduleDefaultStatePoll]);
+
+  const playAction = useCallback((action: PetAction) => {
+    const meta = kanshanActionMeta[action];
+    if (isDead && action !== 'revive') return;
+    if (meta?.onlyWhenDead && !isDead) return;
+
+    isFollowingDefaultRef.current = false;
+    if (meta?.duration === 'temporary') {
+      clearTemporaryFallbackTimer();
+      temporaryActionRef.current = { token: Date.now(), minEndAt: Date.now() + TEMPORARY_ACTION_MIN_MS };
+    } else {
+      clearTemporaryFallbackTimer();
+      temporaryActionRef.current = null;
+    }
+    setActiveAction(action);
+    setActionRevision((current) => current + 1);
+    if (meta?.terminal) setIsDead(true);
+    if (action === 'revive') setIsDead(false);
+  }, [clearTemporaryFallbackTimer, isDead]);
+
+  const finishTemporaryAction = useCallback(() => {
+    const temporaryAction = temporaryActionRef.current;
+    if (!temporaryAction) return;
+
+    const remainingMs = temporaryAction.minEndAt - Date.now();
+    if (remainingMs > 0) {
+      clearTemporaryFallbackTimer();
+      const temporaryToken = temporaryAction.token;
+      temporaryFallbackTimerRef.current = window.setTimeout(() => {
+        if (temporaryActionRef.current?.token !== temporaryToken) return;
+        temporaryActionRef.current = null;
+        fetchAndApplyDefaultState().finally(scheduleDefaultStatePoll);
+      }, remainingMs);
+      return;
+    }
+
+    clearTemporaryFallbackTimer();
+    temporaryActionRef.current = null;
+    fetchAndApplyDefaultState().finally(scheduleDefaultStatePoll);
+  }, [clearTemporaryFallbackTimer, fetchAndApplyDefaultState, scheduleDefaultStatePoll]);
+
+  const playDefaultAction = useCallback(() => {
+    finishTemporaryAction();
+  }, [finishTemporaryAction]);
+
+  const handleTemporaryActionStart = useCallback(() => {
+    isFollowingDefaultRef.current = false;
+    clearTemporaryFallbackTimer();
+    temporaryActionRef.current = { token: Date.now(), minEndAt: Date.now() + TEMPORARY_ACTION_MIN_MS };
+  }, [clearTemporaryFallbackTimer]);
+
+  const playRawClip = useCallback((clipName: string) => {
+    isFollowingDefaultRef.current = false;
+    clearTemporaryFallbackTimer();
+    temporaryActionRef.current = null;
+    previewRef.current?.playRawClip(clipName);
+  }, [clearTemporaryFallbackTimer]);
+
+  const handleActionEnd = useCallback((action: PetAction) => {
+    const meta = kanshanActionMeta[action];
+    if (meta?.duration !== 'temporary' || meta.terminal) return;
+
+    finishTemporaryAction();
+  }, [finishTemporaryAction]);
+
+  const showRewardToast = useCallback((reward: Exclude<RewardToast, null>) => {
+    setRewardToast(null);
+    window.setTimeout(() => setRewardToast(reward), 0);
+  }, []);
+
+  const handleSelectProp = useCallback((item: KanshanPropItem) => {
+    showRewardToast({ label: item.name, icon: { propId: item.id } });
+  }, [showRewardToast]);
+
+  const handleSelectTask = useCallback((item: KanshanTaskItem) => {
+    showRewardToast({ label: item.taskName, icon: 'task' });
+  }, [showRewardToast]);
+
+  const submitChat = useCallback(async () => {
+    const message = chatInput.trim();
+    if (!message || isSending) return;
+
+    chatAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    chatAbortControllerRef.current = abortController;
+
+    clearChatDisplayTimer();
+    pendingChatTextRef.current = '';
+    visibleChatTextRef.current = '';
+    isChatStreamDoneRef.current = false;
+    setIsSending(true);
+    setChatError('');
+    setChatText('');
+    setLastUserMessage(message);
+
+    try {
+      pendingChatTextRef.current = '';
+      visibleChatTextRef.current = '';
+      isChatStreamDoneRef.current = false;
+
+      await streamChat(message, {
+        onChunk(chunk) {
+          enqueueChatText(chunk);
+        },
+        onDone(fullText) {
+          isChatStreamDoneRef.current = true;
+          pendingChatTextRef.current = fullText.slice(visibleChatTextRef.current.length) + pendingChatTextRef.current;
+          if (chatDisplayTimerRef.current === null) {
+            flushChatDisplay();
+          }
+        },
+      }, { signal: abortController.signal });
+      setChatInput('');
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      clearChatDisplayTimer();
+      pendingChatTextRef.current = '';
+      setChatError('对话暂时失败了，请稍后再试。');
+      setChatText((current) => current || '我刚才没听清，再说一次。');
+    } finally {
+      if (chatAbortControllerRef.current === abortController) {
+        chatAbortControllerRef.current = null;
+      }
+
+      const waitForTypingToFinish = () => {
+        if (pendingChatTextRef.current.length > 0 || chatDisplayTimerRef.current !== null) {
+          window.setTimeout(waitForTypingToFinish, CHAT_TYPING_INTERVAL_MS);
+          return;
+        }
+
+        setIsSending(false);
+      };
+
+      waitForTypingToFinish();
+    }
+  }, [chatInput, isSending]);
+
+  const handleChatInputKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Enter' || event.shiftKey) return;
+    event.preventDefault();
+    void submitChat();
+  }, [submitChat]);
+
+  return (
+    <main className="glb-shell">
+      <KanshanModelPreview
+        chatError={chatError}
+        chatInput={chatInput}
+        dialogueText={chatText}
+        isDialogueStreaming={isSending}
+        lastUserMessage={lastUserMessage}
+        ref={previewRef}
+        actionRevision={actionRevision}
+        activeAction={activeAction}
+        menuDataStatus={menuDataStatus}
+        rewardToast={rewardToast}
+        modelUrl={kanshanModelConfig.url}
+        propItems={propItems}
+        taskItems={taskItems}
+        onActionEnd={handleActionEnd}
+        onPatStart={handleTemporaryActionStart}
+        onPatEnd={playDefaultAction}
+        onClipNamesChange={setClipNames}
+        onRetryMenuData={loadMenuData}
+        onSelectProp={handleSelectProp}
+        onSelectTask={handleSelectTask}
+        onChatInputChange={setChatInput}
+        onChatInputKeyDown={handleChatInputKeyDown}
+        onChatSubmit={() => void submitChat()}
+      />
+      <section className="glb-main-panel">
+        <p className="eyebrow">Three.js GLB Preview</p>
+        <h1>模型和动作都由配置控制。</h1>
+        <p>
+          当前页面加载 <code>{kanshanModelConfig.fileName}</code>。语义动作走配置映射，原始 clip 面板直接播放 GLB 内动画。
+        </p>
+        <section className="preview-panel">
+          <h2>语义动作</h2>
+          {previewActionGroups.map((group) => (
+            <section key={group.title} className="action-group">
+              <h3>{group.title}</h3>
+              <div className="glb-actions" aria-label={group.title}>
+                {group.actions.map((item) => {
+                  const disabled = (isDead && item.action !== 'revive') || Boolean(item.onlyWhenDead && !isDead);
+                  return (
+                    <button
+                      key={item.action}
+                      className={item.action === activeAction ? 'is-active' : ''}
+                      disabled={disabled}
+                      type="button"
+                      onClick={() => playAction(item.action)}
+                    >
+                      {item.label}
+                      <span className="action-strategy" role="tooltip">
+                        {item.duration} · {item.repetitions ? item.repetitions + '轮' : item.loop ? '循环' : '单次'} · {item.clips.map(formatKanshanActionClip).join(' / ')}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+          <p className="state-note">当前状态：<code>{isDead ? '死亡，只允许复活' : activeAction}</code></p>
+          {missingSemanticClipNames.length > 0 ? (
+            <p className="state-note">未映射语义 clip：<code>{missingSemanticClipNames.join(' / ')}</code></p>
+          ) : null}
+        </section>
+        <section className="preview-panel">
+          <h2>语义 clip 对照</h2>
+          <p className="clip-note">按钮显示语义 clip。点击后通过映射表播放真实 GLB clip。</p>
+          <div className="raw-clip-list" aria-label="原始 GLB clip">
+            {clipNames.length === 0 ? (
+              <span>等待 GLB clip 列表。</span>
+            ) : (
+              semanticClipRows.map((item, index) => {
+                const hasRawClip = rawClipNameSet.has(item.rawClipName);
+                return (
+                  <div key={item.semanticClipName} className="raw-clip-row">
+                    <span className="raw-clip-index">{index}</span>
+                    <button
+                      type="button"
+                      title={item.note}
+                      disabled={!hasRawClip}
+                      onClick={() => playRawClip(item.rawClipName)}
+                    >
+                      {item.semanticClipName}
+                      {item.note ? <small>{item.note}</small> : null}
+                    </button>
+                    <code>{item.semanticClipName} =&gt; {hasRawClip ? item.rawClipName : '缺失'}</code>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </section>
+      </section>
+    </main>
+  );
+}
+
+createRoot(document.getElementById('root') as HTMLElement).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
