@@ -13,6 +13,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     assetsInclude: ['**/*.glb'],
     resolve: {
+      dedupe: ['react', 'react-dom'],
       alias: {
         '@kanshan/bridge': bridgeSource,
         '@kanshan/three-runtime': threeRuntimeSource,

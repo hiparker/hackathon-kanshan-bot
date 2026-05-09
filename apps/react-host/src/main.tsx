@@ -31,7 +31,6 @@ const DEFAULT_STATE_POLL_MS = 10000;
 const TEMPORARY_ACTION_MIN_MS = 1800;
 const CHAT_TYPING_INTERVAL_MS = 80;
 const CHAT_TYPING_BATCH_SIZE = 2;
-
 function resolveActionHint(actionHint: string): PetAction | null {
   if (actionHint === 'happy-temporary') return 'happy';
   if (actionHint === 'exercise-temporary') return 'run';
@@ -196,7 +195,7 @@ function App() {
       clearDefaultStateTimer();
       clearTemporaryFallbackTimer();
     };
-  }, [clearDefaultStateTimer, clearTemporaryFallbackTimer, scheduleDefaultStatePoll]);
+  }, [clearChatDisplayTimer, clearDefaultStateTimer, clearTemporaryFallbackTimer, scheduleDefaultStatePoll]);
 
   const playAction = useCallback((action: PetAction) => {
     const meta = kanshanActionMeta[action];
@@ -322,18 +321,20 @@ function App() {
       visibleChatTextRef.current = '';
       isChatStreamDoneRef.current = false;
 
-      await streamChat(message, {
-        onChunk(chunk) {
+      const streamHandlers = {
+        onChunk(chunk: string) {
           enqueueChatText(chunk);
         },
-        onDone(fullText) {
+        onDone(fullText: string) {
           isChatStreamDoneRef.current = true;
           pendingChatTextRef.current = fullText.slice(visibleChatTextRef.current.length) + pendingChatTextRef.current;
           if (chatDisplayTimerRef.current === null) {
             flushChatDisplay();
           }
         },
-      }, { signal: abortController.signal });
+      };
+
+      await streamChat(message, streamHandlers, { signal: abortController.signal });
       setChatInput('');
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return;
@@ -357,7 +358,7 @@ function App() {
 
       waitForTypingToFinish();
     }
-  }, [chatInput, isSending]);
+  }, [chatInput, enqueueChatText, flushChatDisplay, isSending]);
 
   const handleChatInputKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== 'Enter' || event.shiftKey) return;

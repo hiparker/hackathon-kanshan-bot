@@ -31,3 +31,8 @@ services/**/*.db
 services/**/*.db-journal
 services/**/*.db-shm
 services/**/*.db-wal
+.idea/
+.cursor/
+kanshan.db
+kanshan.db-shm
+kanshan.db-wal

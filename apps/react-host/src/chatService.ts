@@ -50,8 +50,13 @@ function consumeSseBuffer(
   return nextBuffer;
 }
 
+interface ChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
 async function fetchOpenAiStream(
-  message: string,
+  messages: ChatMessage[],
   handlers: StreamChatHandlers,
   options: StreamChatOptions = {},
 ): Promise<void> {
@@ -64,16 +69,7 @@ async function fetchOpenAiStream(
     body: JSON.stringify({
       model: import.meta.env.VITE_OPENAI_MODEL,
       stream: true,
-      messages: [
-        {
-          role: 'system',
-          content: '你是看山。你要像桌面陪伴角色一样说话。句子短。语气平静。内容自然。',
-        },
-        {
-          role: 'user',
-          content: message,
-        },
-      ],
+      messages,
       thinking: {
         type: 'disabled'
       }
@@ -119,6 +115,58 @@ async function fetchOpenAiStream(
   handlers.onDone?.(fullText);
 }
 
+function buildDistilledSystemPrompt(profileBrief: string): string {
+  return [
+    '你是用户的「思维分身」Demo：模仿其论述习惯、价值取向与篇幅节奏来回答问题。',
+    '要求：先给出可直接执行的判断或步骤，再补充理由；语气保持中文知乎答主风格，避免卖萌宠物口吻。',
+    '素材片段仅供模仿风格与知识结构，不要宣称「我记得」「我写过原文」，可笼统说「按我过去的习惯会…」。',
+    `【侧写】${profileBrief}`,
+  ].join('\n');
+}
+
+export async function streamDistilledSelfChat(
+  userMessage: string,
+  profileBrief: string,
+  snippets: Array<{ title: string; text: string }>,
+  handlers: StreamChatHandlers,
+  options: StreamChatOptions = {},
+): Promise<void> {
+  const trimmedMessage = userMessage.trim();
+  if (!trimmedMessage) {
+    const error = new Error('Message must not be empty.');
+    handlers.onError?.(error, '');
+    throw error;
+  }
+
+  const contextBlock = snippets
+    .map((s, i) => `【片段${i + 1}】${s.title}\n${s.text}`)
+    .join('\n\n');
+
+  const userPayload = [
+    '以下是用户历史写作片段（仅供模仿语气、论证习惯与知识边界，禁止整段照抄）：',
+    '',
+    contextBlock || '（暂无匹配片段，仅凭侧写模仿风格。）',
+    '',
+    '---',
+    '',
+    '当前提问：',
+    trimmedMessage,
+  ].join('\n');
+
+  const messages: ChatMessage[] = [
+    { role: 'system', content: buildDistilledSystemPrompt(profileBrief) },
+    { role: 'user', content: userPayload },
+  ];
+
+  try {
+    await fetchOpenAiStream(messages, handlers, options);
+  } catch (error) {
+    const normalizedError = error instanceof Error ? error : new Error(String(error));
+    handlers.onError?.(normalizedError, '');
+    throw normalizedError;
+  }
+}
+
 export async function streamChat(
   message: string,
   handlers: StreamChatHandlers,
@@ -132,7 +180,20 @@ export async function streamChat(
   }
 
   try {
-    await fetchOpenAiStream(trimmedMessage, handlers, options);
+    await fetchOpenAiStream(
+      [
+        {
+          role: 'system',
+          content: '你是看山。你要像桌面陪伴角色一样说话。句子短。语气平静。内容自然。',
+        },
+        {
+          role: 'user',
+          content: trimmedMessage,
+        },
+      ],
+      handlers,
+      options,
+    );
   } catch (error) {
     const normalizedError = error instanceof Error ? error : new Error(String(error));
     handlers.onError?.(normalizedError, '');

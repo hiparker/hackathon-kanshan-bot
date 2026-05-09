@@ -15,6 +15,8 @@ import (
 
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/basic/util/session"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/auth"
+	distillportal "github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/distill"
+	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/mcp"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/inventory"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/state"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/stats"
@@ -35,7 +37,7 @@ func New(logger *slog.Logger) http.Handler {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"*"},
 		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
-		AllowedHeaders:   []string{"Content-Type", session.Header},
+		AllowedHeaders:   []string{"Content-Type", session.Header, "Authorization"},
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))
@@ -44,18 +46,23 @@ func New(logger *slog.Logger) http.Handler {
 
 	r.Route("/api/auth", auth.New().Routes)
 
+	// MCP（JSON-RPC）：无会话依赖，便于 OpenClaw / Cursor 直连；蒸馏工具与 /api/distill/* 同源逻辑。
+	r.Post("/api/mcp", mcp.New().ServeHTTP)
+
 	r.Route("/api", func(r chi.Router) {
 		r.Use(session.Required)
 		r.Route("/inventory", inventory.New().Routes)
 		r.Route("/pet", state.New().Routes)
 		r.Route("/tasks", task.New().Routes)
 		r.Route("/stats", stats.New().Routes)
+		r.Route("/distill", distillportal.New().Routes)
 	})
 
 	logger.Info("router ready",
 		"routes", []string{
 			"GET /healthz",
 			"POST /api/auth/zhihu",
+			"POST /api/mcp",
 			"GET /api/inventory",
 			"POST /api/inventory/use",
 			"GET /api/pet/state",
@@ -63,6 +70,9 @@ func New(logger *slog.Logger) http.Handler {
 			"GET /api/tasks",
 			"POST /api/tasks/progress",
 			"POST /api/stats/event",
+			"GET /api/distill/mock-corpus",
+			"POST /api/distill/profile",
+			"POST /api/distill/snippets",
 		},
 	)
 	return r
