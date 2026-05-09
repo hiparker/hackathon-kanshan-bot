@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/basic/dao"
@@ -72,6 +73,48 @@ func (d *itemDao) AdjustQty(ctx context.Context, userID, itemID string, delta in
 		return err
 	}
 
+	return tx.Commit()
+}
+
+func (d *itemDao) DecrementQty(ctx context.Context, userID, itemID string, amount int, reason string) error {
+	if amount <= 0 {
+		return fmt.Errorf("itemDao.DecrementQty: amount must be positive")
+	}
+	now := time.Now().Unix()
+	tx, err := d.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var catExists int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM items_catalog WHERE item_id = ?`, itemID).Scan(&catExists); err != nil {
+		return err
+	}
+	if catExists == 0 {
+		return dao.ErrNotFound
+	}
+
+	res, err := tx.ExecContext(ctx,
+		`UPDATE user_items SET qty = qty - ?, last_used_at = ? WHERE user_id = ? AND item_id = ? AND qty >= ?`,
+		amount, now, userID, itemID, amount,
+	)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return dao.ErrInsufficientStock
+	}
+
+	if _, err := tx.ExecContext(ctx, `INSERT INTO inventory_log(user_id, item_id, delta, reason, created_at) VALUES(?, ?, ?, ?, ?)`,
+		userID, itemID, -amount, reason, now,
+	); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 

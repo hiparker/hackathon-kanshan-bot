@@ -26,6 +26,8 @@ func New() *Handler { return &Handler{svc: serviceimpl.NewInventoryService()} }
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/", h.list)
 	r.Post("/use", h.use)
+	r.Post("/deduct", h.deduct)
+	r.Post("/restock", h.restock)
 }
 
 type itemView struct {
@@ -76,6 +78,45 @@ type stateView struct {
 	Mood       string `json:"mood"`
 	Lifecycle  string `json:"lifecycle"`
 	LastTickAt int64  `json:"last_tick_at"`
+}
+
+type qtyRequest struct {
+	ItemID string `json:"item_id"`
+	Qty    int    `json:"qty"`
+	Reason string `json:"reason,omitempty"`
+}
+
+type itemOKResponse struct {
+	OK   bool     `json:"ok"`
+	Item itemView `json:"item"`
+}
+
+func (h *Handler) deduct(w http.ResponseWriter, r *http.Request) {
+	var req qtyRequest
+	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	userID := session.UserID(r.Context())
+	it, err := h.svc.Deduct(r.Context(), userID, req.ItemID, req.Qty, req.Reason)
+	if err != nil {
+		errx.WriteServiceError(w, err, map[string]any{"item_id": req.ItemID, "qty": req.Qty})
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, itemOKResponse{OK: true, Item: toView(it)})
+}
+
+func (h *Handler) restock(w http.ResponseWriter, r *http.Request) {
+	var req qtyRequest
+	if !httpx.DecodeJSON(w, r, &req) {
+		return
+	}
+	userID := session.UserID(r.Context())
+	it, err := h.svc.Restock(r.Context(), userID, req.ItemID, req.Qty, req.Reason)
+	if err != nil {
+		errx.WriteServiceError(w, err, map[string]any{"item_id": req.ItemID, "qty": req.Qty})
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, itemOKResponse{OK: true, Item: toView(it)})
 }
 
 func (h *Handler) use(w http.ResponseWriter, r *http.Request) {

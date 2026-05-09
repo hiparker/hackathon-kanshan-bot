@@ -66,6 +66,11 @@ type UseResult struct {
 type InventoryService interface {
 	List(ctx context.Context, userID string) ([]InventoryItem, error)
 	Use(ctx context.Context, userID, itemID string) (UseResult, error)
+	// Deduct removes qty without pet precondition checks (crafting, shop, batch consume).
+	// reason is stored in inventory_log (empty defaults to "deduct").
+	Deduct(ctx context.Context, userID, itemID string, qty int, reason string) (InventoryItem, error)
+	// Restock adds qty (task rewards, purchase). Empty reason defaults to "restock".
+	Restock(ctx context.Context, userID, itemID string, qty int, reason string) (InventoryItem, error)
 }
 
 // ===== Pet state =====
@@ -87,6 +92,10 @@ type PetSnapshot struct {
 type PetStateService interface {
 	Get(ctx context.Context, userID string) (PetSnapshot, error)
 	Tick(ctx context.Context, userID string) (PetSnapshot, error)
+	// CompleteItemUse applies decay, validates precondition, runs decrement (typically
+	// inventory deduct), merges effect_json into pet, and saves. decrement is skipped
+	// if precondition fails after decay.
+	CompleteItemUse(ctx context.Context, userID string, precondition *string, effectJSON string, decrement func() error) (PetSnapshot, error)
 }
 
 // ===== Tasks =====

@@ -14,6 +14,7 @@ import (
 
 type taskService struct {
 	dao dao.TaskDao
+	inv service.InventoryService
 	now func() time.Time
 }
 
@@ -21,7 +22,11 @@ type taskService struct {
 // singleton. The clock is fixed to time.Now; tests that need a frozen
 // clock should construct taskService directly inside this package.
 func NewTaskService() service.TaskService {
-	return &taskService{dao: daoimpl.NewTaskDao(), now: time.Now}
+	return &taskService{
+		dao: daoimpl.NewTaskDao(),
+		inv: NewInventoryService(),
+		now: time.Now,
+	}
 }
 
 func (s *taskService) List(ctx context.Context, userID, period string) ([]service.TaskView, error) {
@@ -77,6 +82,17 @@ func (s *taskService) Progress(ctx context.Context, userID, taskID string, delta
 	if err := s.dao.UpsertProgress(ctx, userID, taskID, periodKey, t.DoneCount, rewarded, doneAt); err != nil {
 		return service.ProgressResult{}, service.ErrInternal
 	}
+
+	if len(granted) > 0 {
+		for _, rw := range granted {
+			if rw.Kind == "item" && rw.ItemID != "" && rw.Qty > 0 {
+				if _, err := s.inv.Restock(ctx, userID, rw.ItemID, rw.Qty, "task_reward:"+taskID); err != nil {
+					return service.ProgressResult{}, err
+				}
+			}
+		}
+	}
+
 	t.Rewarded = rewarded
 	if doneAt != nil {
 		t.DoneAt = doneAt

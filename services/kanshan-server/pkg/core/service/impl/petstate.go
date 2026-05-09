@@ -42,6 +42,35 @@ func (s *petStateService) Tick(ctx context.Context, userID string) (service.PetS
 	return toSnapshot(userID, pet), nil
 }
 
+func (s *petStateService) CompleteItemUse(ctx context.Context, userID string, precondition *string, effectJSON string, decrement func() error) (service.PetSnapshot, error) {
+	if err := bizstate.ValidateEffectJSON(effectJSON); err != nil {
+		return service.PetSnapshot{}, service.ErrBadRequest
+	}
+	pet, err := s.load(ctx, userID)
+	if err != nil {
+		return service.PetSnapshot{}, service.ErrInternal
+	}
+	now := time.Now().Unix()
+	bizstate.Apply(pet, now, bizstate.DefaultDecay)
+
+	if precondition != nil && *precondition != pet.Lifecycle {
+		return service.PetSnapshot{}, service.ErrInventoryPreconditionFail
+	}
+
+	if err := decrement(); err != nil {
+		return service.PetSnapshot{}, err
+	}
+
+	if err := bizstate.ApplyEffectJSON(pet, effectJSON); err != nil {
+		return service.PetSnapshot{}, service.ErrBadRequest
+	}
+
+	if err := s.dao.Save(ctx, toDao(userID, pet)); err != nil {
+		return service.PetSnapshot{}, service.ErrInternal
+	}
+	return toSnapshot(userID, pet), nil
+}
+
 func (s *petStateService) load(ctx context.Context, userID string) (*bizstate.Pet, error) {
 	row, err := s.dao.Get(ctx, userID)
 	if err != nil {

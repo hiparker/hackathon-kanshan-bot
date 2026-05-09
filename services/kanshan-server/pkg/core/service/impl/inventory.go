@@ -35,9 +35,7 @@ func (s *inventoryService) List(ctx context.Context, userID string) ([]service.I
 	return out, nil
 }
 
-// Use validates qty + precondition, decrements stock, and asks PetStateService
-// to refresh the snapshot. The actual effect application against pet_state
-// columns will land in P1 alongside real persistence.
+// Use applies time decay + catalog effect_json to pet_state, after qty check and atomic deduct.
 func (s *inventoryService) Use(ctx context.Context, userID, itemID string) (service.UseResult, error) {
 	if itemID == "" {
 		return service.UseResult{}, service.ErrBadRequest
@@ -51,26 +49,72 @@ func (s *inventoryService) Use(ctx context.Context, userID, itemID string) (serv
 		return service.UseResult{}, service.ErrInternal
 	}
 
-	pet, err := s.petState.Get(ctx, userID)
-	if err != nil {
-		return service.UseResult{}, err
-	}
-
-	if item.Precondition != nil && *item.Precondition != pet.Lifecycle {
-		return service.UseResult{}, service.ErrInventoryPreconditionFail
-	}
 	if item.Qty <= 0 {
 		return service.UseResult{}, service.ErrInventoryInsufficient
 	}
 
-	if err := s.itemDao.AdjustQty(ctx, userID, itemID, -1, "use"); err != nil {
-		return service.UseResult{}, service.ErrInternal
+	snap, err := s.petState.CompleteItemUse(ctx, userID, item.Precondition, item.EffectJSON, func() error {
+		return s.itemDao.DecrementQty(ctx, userID, itemID, 1, "use")
+	})
+	if err != nil {
+		if errors.Is(err, dao.ErrInsufficientStock) {
+			return service.UseResult{}, service.ErrInventoryInsufficient
+		}
+		switch err {
+		case service.ErrInventoryPreconditionFail, service.ErrBadRequest:
+			return service.UseResult{}, err
+		default:
+			return service.UseResult{}, service.ErrInternal
+		}
 	}
 
 	return service.UseResult{
-		NewState:   pet,
+		NewState:   snap,
 		ActionHint: item.ActionHint,
 	}, nil
+}
+
+func (s *inventoryService) Deduct(ctx context.Context, userID, itemID string, qty int, reason string) (service.InventoryItem, error) {
+	if itemID == "" || qty <= 0 {
+		return service.InventoryItem{}, service.ErrBadRequest
+	}
+	if reason == "" {
+		reason = "deduct"
+	}
+	if err := s.itemDao.DecrementQty(ctx, userID, itemID, qty, reason); err != nil {
+		if errors.Is(err, dao.ErrNotFound) {
+			return service.InventoryItem{}, service.ErrBadRequest
+		}
+		if errors.Is(err, dao.ErrInsufficientStock) {
+			return service.InventoryItem{}, service.ErrInventoryInsufficient
+		}
+		return service.InventoryItem{}, service.ErrInternal
+	}
+	item, err := s.itemDao.GetForUser(ctx, userID, itemID)
+	if err != nil {
+		return service.InventoryItem{}, service.ErrInternal
+	}
+	return toInventoryItem(item), nil
+}
+
+func (s *inventoryService) Restock(ctx context.Context, userID, itemID string, qty int, reason string) (service.InventoryItem, error) {
+	if itemID == "" || qty <= 0 {
+		return service.InventoryItem{}, service.ErrBadRequest
+	}
+	if reason == "" {
+		reason = "restock"
+	}
+	if err := s.itemDao.AdjustQty(ctx, userID, itemID, qty, reason); err != nil {
+		return service.InventoryItem{}, service.ErrInternal
+	}
+	item, err := s.itemDao.GetForUser(ctx, userID, itemID)
+	if err != nil {
+		if errors.Is(err, dao.ErrNotFound) {
+			return service.InventoryItem{}, service.ErrBadRequest
+		}
+		return service.InventoryItem{}, service.ErrInternal
+	}
+	return toInventoryItem(item), nil
 }
 
 func toInventoryItem(r dao.Item) service.InventoryItem {

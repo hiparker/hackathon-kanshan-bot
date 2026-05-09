@@ -81,8 +81,9 @@ type Error string
 func (e Error) Error() string { return string(e) }
 
 const (
-	ErrNotFound      Error = "not found"
-	ErrAlreadyExists Error = "already exists"
+	ErrNotFound          Error = "not found"
+	ErrAlreadyExists     Error = "already exists"
+	ErrInsufficientStock Error = "insufficient stock"
 )
 
 // ===== Interfaces =====
@@ -105,6 +106,10 @@ type ItemDao interface {
 	// AdjustQty increments (or decrements when delta < 0) the per-user qty.
 	// reason is recorded in inventory_log.
 	AdjustQty(ctx context.Context, userID, itemID string, delta int, reason string) error
+	// DecrementQty subtracts amount atomically. amount must be > 0.
+	// Returns ErrNotFound if item_id is not in items_catalog; ErrInsufficientStock
+	// if the user row is missing or qty < amount.
+	DecrementQty(ctx context.Context, userID, itemID string, amount int, reason string) error
 }
 
 // PetStateDao persists the long-term pet state per user.

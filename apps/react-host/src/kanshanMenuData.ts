@@ -19,8 +19,22 @@ export interface KanshanDefaultState {
   mood: string;
 }
 
+/** 与后端 POST /inventory/use 返回的 new_state 对齐（camelCase 已在客户端映射） */
+export interface KanshanPetSnapshot {
+  hunger: number;
+  happiness: number;
+  energy: number;
+  health: number;
+  growth: number;
+  mood: string;
+  lifecycle: string;
+  lastTickAt: number;
+}
+
 export interface KanshanUsePropResult {
   actionHint: string;
+  /** 道具生效后的看山状态；存在时不应再立刻调用 /pet/state/tick，以免二次衰减 */
+  newState?: KanshanPetSnapshot;
 }
 
 export interface KanshanProgressTaskResult {
@@ -44,8 +58,11 @@ interface PetStateResponse {
   lifecycle: string;
   mood: string;
   hunger: number;
+  happiness: number;
   energy: number;
   health: number;
+  growth: number;
+  last_tick_at: number;
 }
 
 interface TasksResponse {
@@ -58,7 +75,18 @@ interface TasksResponse {
 }
 
 interface UsePropResponse {
+  ok: boolean;
   action_hint: string;
+  new_state: {
+    hunger: number;
+    happiness: number;
+    energy: number;
+    health: number;
+    growth: number;
+    mood: string;
+    lifecycle: string;
+    last_tick_at: number;
+  };
 }
 
 interface ProgressTaskResponse {
@@ -126,12 +154,30 @@ async function toApiError(response: Response): Promise<Error> {
 }
 
 function resolveActionFromPetState(state: PetStateResponse): PetAction {
+  return resolveActionFromPetLike(state);
+}
+
+/** 与后端 pet 快照字段对齐，用于清单道具使用后直接驱动 3D 默认姿态 */
+export function resolveActionFromPetLike(state: {
+  lifecycle: string;
+  hunger: number;
+  energy: number;
+  health: number;
+}): PetAction {
   if (state.lifecycle === 'dead') return 'dead';
   if (state.lifecycle === 'sick') return 'sick';
   if (state.lifecycle === 'hungry' || state.hunger <= 20) return 'hungry';
   if (state.energy <= 20) return 'sleepy';
   if (state.health <= 20) return 'sick';
   return 'idle';
+}
+
+export function petSnapshotToDefaultState(snapshot: KanshanPetSnapshot): KanshanDefaultState {
+  return {
+    action: resolveActionFromPetLike(snapshot),
+    lifecycle: snapshot.lifecycle,
+    mood: snapshot.mood,
+  };
 }
 
 export async function fetchKanshanProps(): Promise<KanshanPropItem[]> {
@@ -158,11 +204,16 @@ export async function fetchKanshanTasks(): Promise<KanshanTaskItem[]> {
 
 export async function fetchKanshanDefaultState(): Promise<KanshanDefaultState> {
   const state = await apiFetch<PetStateResponse>('/pet/state/tick', { method: 'POST', body: '{}' });
-  return {
-    action: resolveActionFromPetState(state),
-    lifecycle: state.lifecycle,
+  return petSnapshotToDefaultState({
+    hunger: state.hunger,
+    happiness: state.happiness,
+    energy: state.energy,
+    health: state.health,
+    growth: state.growth,
     mood: state.mood,
-  };
+    lifecycle: state.lifecycle,
+    lastTickAt: state.last_tick_at,
+  });
 }
 
 export async function useKanshanProp(itemId: string): Promise<KanshanUsePropResult> {
@@ -170,7 +221,19 @@ export async function useKanshanProp(itemId: string): Promise<KanshanUsePropResu
     method: 'POST',
     body: JSON.stringify({ item_id: itemId }),
   });
-  return { actionHint: response.action_hint };
+  const newState: KanshanPetSnapshot | undefined = response.new_state
+    ? {
+        hunger: response.new_state.hunger,
+        happiness: response.new_state.happiness,
+        energy: response.new_state.energy,
+        health: response.new_state.health,
+        growth: response.new_state.growth,
+        mood: response.new_state.mood,
+        lifecycle: response.new_state.lifecycle,
+        lastTickAt: response.new_state.last_tick_at,
+      }
+    : undefined;
+  return { actionHint: response.action_hint, newState };
 }
 
 export async function progressKanshanTask(taskId: string, delta = 1): Promise<KanshanProgressTaskResult> {

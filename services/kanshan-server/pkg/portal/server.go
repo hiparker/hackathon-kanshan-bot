@@ -65,6 +65,8 @@ func New(logger *slog.Logger) http.Handler {
 			"POST /api/mcp",
 			"GET /api/inventory",
 			"POST /api/inventory/use",
+			"POST /api/inventory/deduct",
+			"POST /api/inventory/restock",
 			"GET /api/pet/state",
 			"POST /api/pet/state/tick",
 			"GET /api/tasks",

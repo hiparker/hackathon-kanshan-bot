@@ -13,6 +13,7 @@ import {
   fetchKanshanDefaultState,
   fetchKanshanProps,
   fetchKanshanTasks,
+  petSnapshotToDefaultState,
   progressKanshanTask,
   useKanshanProp,
   type KanshanDefaultState,
@@ -270,14 +271,17 @@ function App() {
     if (item.count <= 0) return;
     showRewardToast({ label: item.name, icon: { propId: item.id } });
     void useKanshanProp(item.id)
-      .then(async ({ actionHint }) => {
+      .then(async ({ actionHint, newState }) => {
         const hintedAction = resolveActionHint(actionHint);
         if (hintedAction) playAction(hintedAction);
 
-        const [nextPropItems] = await Promise.all([
-          fetchKanshanProps(),
-          fetchAndApplyDefaultState(),
-        ]);
+        if (newState) {
+          applyDefaultState(petSnapshotToDefaultState(newState));
+        } else {
+          await fetchAndApplyDefaultState();
+        }
+
+        const nextPropItems = await fetchKanshanProps();
         setPropItems(nextPropItems);
         setMenuDataStatus('ready');
       })
