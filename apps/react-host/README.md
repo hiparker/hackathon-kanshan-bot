@@ -77,3 +77,20 @@ VITE_OPENAI_MODEL=doubao-seed-2-0-lite-260428
 ```
 
 前端会请求本地 `/proxy-openai/chat/completions`，再由 Vite dev server 代理到内网模型地址。
+
+### SecondMe Lab（思维分身流式对话）
+
+与 [SecondMe API](https://develop-docs.second.me/) 一致：`POST /api/secondme/chat/stream` 使用 `Authorization: Bearer lba_at_...`（需应用开通 `chat` 等 scope），响应 SSE 与 OpenAI 流式类似（`data: {"choices":[{"delta":{"content":"..."}}]}`）。
+
+本仓库在 **`VITE_SECONDME_CHAT=1`** 时会让 `chatService` 把 OpenAI 形态的 `messages[]` 转成 SecondMe 的 `message` + `systemPrompt`，并把 Vite 代理重写为 Lab 上的 **`/api/secondme/chat/stream`**（基地址默认 `https://api.mindverse.com/gate/lab`，也可显式设置 `VITE_OPENAI_BASE_URL`）。
+
+```bash
+VITE_SECONDME_CHAT=1
+VITE_OPENAI_API_KEY=lba_at_你的_AccessToken
+# 可选；不设则用文档默认模型
+VITE_OPENAI_MODEL=anthropic/claude-sonnet-4-5
+# 可选
+VITE_SECONDME_APP_ID=general
+VITE_SECONDME_MAX_TOKENS=2000
+# VITE_SECONDME_WEB_SEARCH=1
+```

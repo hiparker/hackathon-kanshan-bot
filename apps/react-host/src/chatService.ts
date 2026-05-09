@@ -55,25 +55,86 @@ interface ChatMessage {
   content: string;
 }
 
+function useSecondMeChat(): boolean {
+  const v = import.meta.env.VITE_SECONDME_CHAT;
+  return v === '1' || v === 'true';
+}
+
+/** SecondMe Lab：POST /api/secondme/chat/stream，单轮 message + 可选 systemPrompt（与 OpenAI messages[] 互转） */
+function messagesToSecondMePayload(messages: ChatMessage[]): {
+  message: string;
+  systemPrompt?: string;
+} {
+  const systemParts = messages.filter((m) => m.role === 'system').map((m) => m.content.trim()).filter(Boolean);
+  const systemPrompt = systemParts.length > 0 ? systemParts.join('\n\n') : undefined;
+
+  const dialogue = messages.filter((m) => m.role !== 'system');
+  let message: string;
+  if (dialogue.length === 0) {
+    message = '';
+  } else if (dialogue.length === 1) {
+    const only = dialogue[0]!;
+    message = only.role === 'user' ? only.content : `助手：${only.content}`;
+  } else {
+    message = dialogue
+      .map((m) => {
+        const label = m.role === 'user' ? '用户' : '助手';
+        return `${label}：${m.content}`;
+      })
+      .join('\n\n');
+  }
+
+  return { message, systemPrompt };
+}
+
 async function fetchOpenAiStream(
   messages: ChatMessage[],
   handlers: StreamChatHandlers,
   options: StreamChatOptions = {},
 ): Promise<void> {
-  const response = await fetch('/proxy-openai/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
+  const secondMe = useSecondMeChat();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`,
+  };
+  const appId = import.meta.env.VITE_SECONDME_APP_ID;
+  if (appId) {
+    headers['X-App-Id'] = appId;
+  }
+
+  let body: Record<string, unknown>;
+  if (secondMe) {
+    const { message, systemPrompt } = messagesToSecondMePayload(messages);
+    body = {
+      message,
+      ...(systemPrompt ? { systemPrompt } : {}),
+      ...(import.meta.env.VITE_OPENAI_MODEL ? { model: import.meta.env.VITE_OPENAI_MODEL } : {}),
+    };
+    const maxTok = import.meta.env.VITE_SECONDME_MAX_TOKENS;
+    if (maxTok) {
+      const n = Number(maxTok);
+      if (Number.isFinite(n) && n > 0) {
+        body.maxTokens = n;
+      }
+    }
+    if (import.meta.env.VITE_SECONDME_WEB_SEARCH === '1' || import.meta.env.VITE_SECONDME_WEB_SEARCH === 'true') {
+      body.enableWebSearch = true;
+    }
+  } else {
+    body = {
       model: import.meta.env.VITE_OPENAI_MODEL,
       stream: true,
       messages,
       thinking: {
-        type: 'disabled'
-      }
-    }),
+        type: 'disabled',
+      },
+    };
+  }
+
+  const response = await fetch('/proxy-openai/chat/completions', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
     signal: options.signal,
   });
 

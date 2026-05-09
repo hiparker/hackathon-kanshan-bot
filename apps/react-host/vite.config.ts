@@ -22,9 +22,18 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         '/proxy-openai': {
-          target: env.VITE_OPENAI_BASE_URL,
+          target:
+            env.VITE_OPENAI_BASE_URL ||
+            (env.VITE_SECONDME_CHAT === '1' || env.VITE_SECONDME_CHAT === 'true'
+              ? 'https://api.mindverse.com/gate/lab'
+              : ''),
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/proxy-openai/, ''),
+          rewrite: (path) => {
+            if (env.VITE_SECONDME_CHAT === '1' || env.VITE_SECONDME_CHAT === 'true') {
+              return '/api/secondme/chat/stream';
+            }
+            return path.replace(/^\/proxy-openai/, '');
+          },
         },
         '/api': {
           target: kanshanApiBaseUrl,
