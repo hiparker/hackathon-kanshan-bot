@@ -8,7 +8,7 @@
 
 | 层 | 技术 | 工程位置 |
 | --- | --- | --- |
-| 桌面端壳 | Rust + Tauri | `apps/desktop-tauri/`（占位，未启动） |
+| 桌面端壳 | Rust + Tauri | [`apps/desktop-tauri`](./apps/desktop-tauri) |
 | 浏览器插件壳 | WebExtension + Vite | `apps/extension/`（占位，未启动） |
 | Web 承载示例 | React + Vite | [`apps/react-host`](./apps/react-host) |
 | 角色运行时 | Three.js + 程序化低模 + toon 材质 | [`packages/kanshan-three-runtime`](./packages/kanshan-three-runtime) |
@@ -73,6 +73,8 @@ curl http://localhost:8787/healthz
 | `pnpm test` | 前端 | 运行 bridge 和运行时清单测试。 |
 | `pnpm build` | 前端 | 构建 bridge、React 示例和 Three.js runtime。 |
 | `pnpm --filter @kanshan/react-host dev` | 前端 | 启动 React 示例应用。 |
+| `pnpm --filter @kanshan/desktop-tauri dev` | 桌面端 | 启动透明桌宠窗口和系统托盘。 |
+| `pnpm --filter @kanshan/desktop-tauri build` | 桌面端 | 打包 macOS / Windows 桌面应用。 |
 | `cd services/kanshan-server && make run` | 后端 | 跑迁移并启动 HTTP 服务。 |
 | `cd services/kanshan-server && make migrate` | 后端 | 仅跑迁移后退出。 |
 | `cd services/kanshan-server && make test` | 后端 | 运行 Go 单元测试（含状态衰减算法）。 |
@@ -82,7 +84,7 @@ curl http://localhost:8787/healthz
 | 模块 | 当前状态 |
 | --- | --- |
 | `apps/react-host` | 已有 mock bridge 示例，用于验证 UI 到运行时的数据流。 |
-| `apps/desktop-tauri` | 占位。待 frontend-rfc 立项后启动。 |
+| `apps/desktop-tauri` | 已有 P0 Tauri 壳：透明无标题栏窗口、托盘显示隐藏、托盘退出。 |
 | `apps/extension` | 占位。待 frontend-rfc 立项后启动。 |
 | `packages/kanshan-three-runtime` | 已有浏览器内 Three.js 低模角色、toon 材质、动作状态、挂点、道具和特效。 |
 | `packages/kanshan-bridge` | 已有命令类型、事件类型、命令校验、内存 bridge 和 `postMessage` bridge。 |

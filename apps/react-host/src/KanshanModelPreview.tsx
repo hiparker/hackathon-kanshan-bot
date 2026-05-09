@@ -17,23 +17,55 @@ export interface KanshanModelPreviewHandle {
 export type KanshanRewardToast = { label: string; icon: 'task' | { propId: string } } | null;
 
 type PetMenuPlacement = 'left' | 'right' | 'top' | 'bottom';
-type PetSnapEdge = PetMenuPlacement;
+type PetSnapEdge = PetMenuPlacement | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 type StagePosition = { x: number; y: number };
-type DialoguePlacement = 'left' | 'right';
+type DialoguePlacement = PetMenuPlacement;
 type BubbleMode = 'action' | 'chat';
+type TauriWindowApi = typeof import('@tauri-apps/api/window');
+type TauriCoreApi = typeof import('@tauri-apps/api/core');
+type DesktopWindowDragState = {
+  appWindow: ReturnType<TauriWindowApi['getCurrentWindow']>;
+  coreApi: TauriCoreApi;
+  pointerId: number;
+  scale: number;
+  stagePointerX: number;
+  stagePointerY: number;
+  stageViewportLeft: number;
+  stageViewportTop: number;
+  windowApi: TauriWindowApi;
+};
 
-const STAGE_SIZE = 350;
+const STAGE_SIZE = 300;
+/** 桌面端仅舞台中心 50% 触发窗口拖动；整舞台仍接收事件以兼顾菜单/气泡悬停。 */
+const DESKTOP_WINDOW_DRAG_MARGIN_FRAC = 0.25;
+
+function isInDesktopWindowDragBand(clientX: number, clientY: number, stageRect: DOMRectReadOnly) {
+  const lx = clientX - stageRect.left;
+  const ly = clientY - stageRect.top;
+  const mx = stageRect.width * DESKTOP_WINDOW_DRAG_MARGIN_FRAC;
+  const my = stageRect.height * DESKTOP_WINDOW_DRAG_MARGIN_FRAC;
+  return lx >= mx && lx <= stageRect.width - mx && ly >= my && ly <= stageRect.height - my;
+}
+
 const STAGE_SAFE_MARGIN = 0;
 const CHAT_DIALOGUE_MAX_WIDTH = 320;
 const CHAT_DIALOGUE_HORIZONTAL_PADDING = 28;
 const CHAT_DIALOGUE_MAX_HEIGHT = 46;
 
 function resolveMenuPlacement(snapEdge?: PetSnapEdge): PetMenuPlacement {
-  if (snapEdge === 'left') return 'right';
-  if (snapEdge === 'right') return 'left';
-  if (snapEdge === 'top') return 'bottom';
-  if (snapEdge === 'bottom') return 'top';
+  if (snapEdge === 'right' || snapEdge === 'top-right' || snapEdge === 'bottom-right') return 'left';
   return 'right';
+}
+
+function isPetSnapEdge(value: string): value is PetSnapEdge {
+  return value === 'left'
+    || value === 'right'
+    || value === 'top'
+    || value === 'bottom'
+    || value === 'top-left'
+    || value === 'top-right'
+    || value === 'bottom-left'
+    || value === 'bottom-right';
 }
 
 function getDefaultStagePosition(): StagePosition {
@@ -72,6 +104,13 @@ function resolveNearestSnapEdge(position: StagePosition): PetSnapEdge {
     right: Math.max(0, window.innerWidth - position.x - width),
     top: position.y,
     bottom: Math.max(0, window.innerHeight - position.y - height),
+    'top-left': Math.hypot(position.x, position.y),
+    'top-right': Math.hypot(Math.max(0, window.innerWidth - position.x - width), position.y),
+    'bottom-left': Math.hypot(position.x, Math.max(0, window.innerHeight - position.y - height)),
+    'bottom-right': Math.hypot(
+      Math.max(0, window.innerWidth - position.x - width),
+      Math.max(0, window.innerHeight - position.y - height),
+    ),
   };
 
   return (Object.entries(distances) as [PetSnapEdge, number][]).sort((a, b) => a[1] - b[1])[0]?.[0] ?? 'left';
@@ -85,8 +124,35 @@ function resolveSnappedPosition(edge: PetSnapEdge, currentPosition: StagePositio
   if (edge === 'right') nextPosition.x = window.innerWidth - width - STAGE_SAFE_MARGIN;
   if (edge === 'top') nextPosition.y = STAGE_SAFE_MARGIN;
   if (edge === 'bottom') nextPosition.y = window.innerHeight - height - STAGE_SAFE_MARGIN;
+  if (edge === 'top-left') {
+    nextPosition.x = STAGE_SAFE_MARGIN;
+    nextPosition.y = STAGE_SAFE_MARGIN;
+  }
+  if (edge === 'top-right') {
+    nextPosition.x = window.innerWidth - width - STAGE_SAFE_MARGIN;
+    nextPosition.y = STAGE_SAFE_MARGIN;
+  }
+  if (edge === 'bottom-left') {
+    nextPosition.x = STAGE_SAFE_MARGIN;
+    nextPosition.y = window.innerHeight - height - STAGE_SAFE_MARGIN;
+  }
+  if (edge === 'bottom-right') {
+    nextPosition.x = window.innerWidth - width - STAGE_SAFE_MARGIN;
+    nextPosition.y = window.innerHeight - height - STAGE_SAFE_MARGIN;
+  }
 
   return clampStagePosition(nextPosition);
+}
+
+function resolveDesktopSnapEdge(distances: Pick<Record<PetSnapEdge, number>, 'left' | 'right' | 'top' | 'bottom'>): PetSnapEdge {
+  const edgeDistances: [PetMenuPlacement, number][] = [
+    ['left', distances.left],
+    ['right', distances.right],
+    ['top', distances.top],
+    ['bottom', distances.bottom],
+  ];
+
+  return edgeDistances.sort((a, b) => a[1] - b[1])[0]?.[0] ?? 'right';
 }
 
 function isCanvasDragTarget(target: EventTarget | null): boolean {
@@ -94,7 +160,7 @@ function isCanvasDragTarget(target: EventTarget | null): boolean {
 }
 
 function resolveDialoguePlacement(snapEdge: PetSnapEdge): DialoguePlacement {
-  return snapEdge === 'right' ? 'left' : 'right';
+  return resolveMenuPlacement(snapEdge) === 'left' ? 'left' : 'right';
 }
 
 
@@ -156,6 +222,7 @@ function paginateDialogueByHeight(text: string, maxHeight: number): string[] {
 interface KanshanModelPreviewProps {
   chatError: string;
   chatInput: string;
+  desktopMode?: boolean;
   dialogueText?: string;
   isDialogueStreaming?: boolean;
   lastUserMessage: string;
@@ -184,6 +251,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     activeAction,
     chatError,
     chatInput,
+    desktopMode = false,
     menuDataStatus,
     rewardToast,
     modelUrl,
@@ -208,9 +276,13 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     const runtimeRef = useRef<KanshanRuntimeBridge | null>(null);
     const playbackModeRef = useRef<'semantic' | 'raw'>('semantic');
     const dialogueTimerRef = useRef<number | null>(null);
+    const desktopWindowDragRef = useRef<DesktopWindowDragState | null>(null);
+    const desktopWindowApiRef = useRef<TauriWindowApi | null>(null);
+    const desktopCoreApiRef = useRef<TauriCoreApi | null>(null);
     const [isStageHovered, setIsStageHovered] = useState(false);
     const [isMenuHovered, setIsMenuHovered] = useState(false);
     const [isChatFocused, setIsChatFocused] = useState(false);
+    const [isDialogueHovered, setIsDialogueHovered] = useState(false);
     const [activeMenuItem, setActiveMenuItem] = useState<'pat' | 'props' | 'tasks' | 'chat' | null>(null);
     const [openPanel, setOpenPanel] = useState<'props' | 'tasks' | 'chat' | null>(null);
     const stageDragRef = useRef<{ pointerId: number; startClientX: number; startClientY: number; startPosition: StagePosition } | null>(null);
@@ -218,6 +290,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     const directionDragRef = useRef<{ startX: number; startYaw: number; yaw: number } | null>(null);
     const [stagePosition, setStagePosition] = useState<StagePosition>(() => getDefaultStagePosition());
     const [snapEdge, setSnapEdge] = useState<PetSnapEdge>('right');
+    const [desktopMenuPlacement, setDesktopMenuPlacement] = useState<PetMenuPlacement>('left');
     const [isStageDragging, setIsStageDragging] = useState(false);
     const [directionYaw, setDirectionYaw] = useState(0);
     const [dialogueLine, setDialogueLine] = useState('');
@@ -238,13 +311,143 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     }), []);
 
     useEffect(() => {
+      if (desktopMode) return;
+
       const handleWindowResize = () => {
         setStagePosition((current) => resolveSnappedPosition(snapEdge, clampStagePosition(current)));
       };
 
       window.addEventListener('resize', handleWindowResize);
       return () => window.removeEventListener('resize', handleWindowResize);
-    }, [snapEdge]);
+    }, [desktopMode, snapEdge]);
+
+    useEffect(() => {
+      if (!desktopMode) return;
+      let unlisten: (() => void) | null = null;
+      let cancelled = false;
+
+      (async () => {
+        try {
+          const [eventApi, windowApi, coreApi] = await Promise.all([
+            import('@tauri-apps/api/event'),
+            import('@tauri-apps/api/window'),
+            import('@tauri-apps/api/core'),
+          ]);
+          desktopWindowApiRef.current = windowApi;
+          desktopCoreApiRef.current = coreApi;
+          const dispose = await eventApi.listen<string>('kanshan://snap-edge', ({ payload }) => {
+            if (isPetSnapEdge(payload)) {
+              setSnapEdge(payload);
+            }
+          });
+          if (cancelled) {
+            dispose();
+            return;
+          }
+          unlisten = dispose;
+        } catch (error) {
+          console.warn('[kanshan] failed to listen Tauri snap edge event', error);
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+        unlisten?.();
+      };
+    }, [desktopMode]);
+
+    useEffect(() => {
+      if (!desktopMode) return;
+      let cancelled = false;
+
+      const syncInteractiveRegions = async () => {
+        const stage = stageRef.current;
+        if (!stage) return;
+
+        try {
+          const [windowApi, coreApi] = await Promise.all([
+            desktopWindowApiRef.current ?? import('@tauri-apps/api/window'),
+            desktopCoreApiRef.current ?? import('@tauri-apps/api/core'),
+          ]);
+          if (cancelled) return;
+          desktopWindowApiRef.current = windowApi;
+          desktopCoreApiRef.current = coreApi;
+
+          const scale = await windowApi.getCurrentWindow().scaleFactor();
+          const stageRect = stage.getBoundingClientRect();
+          await coreApi.invoke('kanshan_set_stage_position', {
+            x: stageRect.left * scale,
+            y: stageRect.top * scale,
+          });
+
+          const selectors = [
+            '.pet-hover-menu.is-active',
+            '.pet-menu-actions',
+            '.pet-submenu',
+            '.pet-dialogue-bubble',
+            '.pet-dialogue-chat-shell',
+            '.pet-dialogue-pager',
+            '.direction-drag-handle',
+            '.pet-reward-toast',
+          ].join(',');
+          const regions = Array.from(stage.querySelectorAll<HTMLElement>(selectors))
+            .filter((element) => {
+              const style = window.getComputedStyle(element);
+              return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+            })
+            .map((element) => {
+              const rect = element.getBoundingClientRect();
+              return {
+                x: rect.left * scale,
+                y: rect.top * scale,
+                width: rect.width * scale,
+                height: rect.height * scale,
+              };
+            })
+            .filter((rect) => rect.width > 0 && rect.height > 0);
+
+          await coreApi.invoke('kanshan_set_interactive_regions', { regions });
+        } catch (error) {
+          console.warn('[kanshan] failed to sync desktop interactive regions', error);
+        }
+      };
+
+      void syncInteractiveRegions();
+      const onResize = () => void syncInteractiveRegions();
+      window.addEventListener('resize', onResize);
+      const intervalId = window.setInterval(() => {
+        if (!cancelled) void syncInteractiveRegions();
+      }, 72);
+
+      return () => {
+        cancelled = true;
+        window.removeEventListener('resize', onResize);
+        window.clearInterval(intervalId);
+      };
+    }, [desktopMode]);
+
+    const desktopStageStyle = useMemo<React.CSSProperties | undefined>(() => {
+      if (!desktopMode) return undefined;
+      switch (snapEdge) {
+        case 'left':
+          return { left: 0, top: '50%', transform: 'translateY(-50%)' };
+        case 'top-left':
+          return { left: 0, top: 0 };
+        case 'bottom-left':
+          return { left: 0, bottom: 0 };
+        case 'top':
+          return { top: 0, left: '50%', transform: 'translateX(-50%)' };
+        case 'bottom':
+          return { bottom: 0, left: '50%', transform: 'translateX(-50%)' };
+        case 'top-right':
+          return { right: 0, top: 0 };
+        case 'bottom-right':
+          return { right: 0, bottom: 0 };
+        case 'right':
+        default:
+          return { right: 0, top: '50%', transform: 'translateY(-50%)' };
+      }
+    }, [desktopMode, snapEdge]);
 
     useEffect(() => {
       const canvas = canvasRef.current;
@@ -295,9 +498,15 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     const actionDialogueText = dialogueLine;
     const chatDialogueText = dialogueText?.trim() ?? '';
 
-    const menuPlacement = useMemo(() => resolveMenuPlacement(snapEdge), [snapEdge]);
-    const isMenuActive = isStageHovered || isMenuHovered || isChatFocused;
-    const bubbleMode: BubbleMode = activeMenuItem === 'chat' || openPanel === 'chat' || isChatFocused ? 'chat' : 'action';
+    const menuPlacement = useMemo(
+      () => (desktopMode ? desktopMenuPlacement : resolveMenuPlacement(snapEdge)),
+      [desktopMenuPlacement, desktopMode, snapEdge],
+    );
+    const isMenuActive = isStageHovered || isMenuHovered;
+    const hasChatDialogue = chatDialogueText.length > 0 || isDialogueStreaming;
+    const isChatPanelActive = activeMenuItem === 'chat' || openPanel === 'chat' || isChatFocused;
+    const shouldShowChatBubble = isChatPanelActive || isDialogueHovered || isDialogueStreaming || (!actionDialogueText && hasChatDialogue);
+    const bubbleMode: BubbleMode = shouldShowChatBubble ? 'chat' : 'action';
 
     useEffect(() => {
       if (!chatDialogueText) {
@@ -327,6 +536,63 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     const handleStageDragStart = (event: React.PointerEvent<HTMLElement>) => {
       if (!isCanvasDragTarget(event.target)) return;
 
+      if (desktopMode) {
+        const stageRect = event.currentTarget.getBoundingClientRect();
+        if (!isInDesktopWindowDragBand(event.clientX, event.clientY, stageRect)) {
+          return;
+        }
+
+        void (async () => {
+          try {
+            const coreApi = desktopCoreApiRef.current ?? (await import('@tauri-apps/api/core'));
+            desktopCoreApiRef.current = coreApi;
+            await coreApi.invoke('kanshan_set_passthrough_suppressed', { suppress: true });
+          } catch (error) {
+            console.warn('[kanshan] kanshan_set_passthrough_suppressed', error);
+          }
+        })();
+
+        event.preventDefault();
+        event.stopPropagation();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        setIsStageDragging(true);
+
+        void (async () => {
+          try {
+            const [windowApi, coreApi] = await Promise.all([
+              desktopWindowApiRef.current ?? import('@tauri-apps/api/window'),
+              desktopCoreApiRef.current ?? import('@tauri-apps/api/core'),
+            ]);
+            desktopWindowApiRef.current = windowApi;
+            desktopCoreApiRef.current = coreApi;
+            const appWindow = windowApi.getCurrentWindow();
+            desktopWindowDragRef.current = {
+              appWindow,
+              coreApi,
+              pointerId: event.pointerId,
+              scale: await appWindow.scaleFactor(),
+              stagePointerX: event.clientX - stageRect.left,
+              stagePointerY: event.clientY - stageRect.top,
+              stageViewportLeft: stageRect.left,
+              stageViewportTop: stageRect.top,
+              windowApi,
+            };
+          } catch (error) {
+            desktopWindowDragRef.current = null;
+            setIsStageDragging(false);
+            try {
+              const coreApi = desktopCoreApiRef.current ?? (await import('@tauri-apps/api/core'));
+              desktopCoreApiRef.current = coreApi;
+              await coreApi.invoke('kanshan_set_passthrough_suppressed', { suppress: false });
+            } catch {
+              /* ignore */
+            }
+            console.warn('[kanshan] failed to start desktop window drag', error);
+          }
+        })();
+        return;
+      }
+
       event.currentTarget.setPointerCapture(event.pointerId);
       stageDragRef.current = {
         pointerId: event.pointerId,
@@ -338,6 +604,17 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     };
 
     const handleStageDragMove = (event: React.PointerEvent<HTMLElement>) => {
+      if (desktopMode) {
+        const drag = desktopWindowDragRef.current;
+        if (!drag) return;
+
+        event.preventDefault();
+        const nextX = (event.screenX - drag.stagePointerX - drag.stageViewportLeft) * drag.scale;
+        const nextY = (event.screenY - drag.stagePointerY - drag.stageViewportTop) * drag.scale;
+        void drag.appWindow.setPosition(new drag.windowApi.PhysicalPosition(Math.round(nextX), Math.round(nextY)));
+        return;
+      }
+
       const drag = stageDragRef.current;
       if (!drag) return;
 
@@ -348,6 +625,106 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     };
 
     const handleStageDragEnd = (event: React.PointerEvent<HTMLElement>) => {
+      if (desktopMode) {
+        void (async () => {
+          try {
+            const coreApi = desktopCoreApiRef.current ?? (await import('@tauri-apps/api/core'));
+            desktopCoreApiRef.current = coreApi;
+            await coreApi.invoke('kanshan_set_passthrough_suppressed', { suppress: false });
+          } catch {
+            /* ignore */
+          }
+        })();
+
+        const drag = desktopWindowDragRef.current;
+        if (!drag) return;
+
+        if (event.currentTarget.hasPointerCapture(drag.pointerId)) {
+          event.currentTarget.releasePointerCapture(drag.pointerId);
+        }
+
+        desktopWindowDragRef.current = null;
+        setIsStageDragging(false);
+        event.preventDefault();
+
+        void (async () => {
+          try {
+            const [position, size, monitor] = await Promise.all([
+              drag.appWindow.outerPosition(),
+              drag.appWindow.outerSize(),
+              drag.windowApi.currentMonitor(),
+            ]);
+            const workArea = monitor?.workArea;
+            if (!workArea) return;
+
+            const stageLeft = position.x + drag.stageViewportLeft * drag.scale;
+            const stageTop = position.y + drag.stageViewportTop * drag.scale;
+            const stageSize = STAGE_SIZE * drag.scale;
+            const stageRight = stageLeft + stageSize;
+            const stageBottom = stageTop + stageSize;
+            const workLeft = workArea.position.x;
+            const workTop = workArea.position.y;
+            const workRight = workLeft + workArea.size.width;
+            const workBottom = workTop + workArea.size.height;
+            const distLeft = Math.max(0, stageLeft - workLeft);
+            const distRight = Math.max(0, workRight - stageRight);
+            const distTop = Math.max(0, stageTop - workTop);
+            const distBottom = Math.max(0, workBottom - stageBottom);
+            const distances: Record<PetSnapEdge, number> = {
+              left: distLeft,
+              right: distRight,
+              top: distTop,
+              bottom: distBottom,
+              'top-left': Math.hypot(distLeft, distTop),
+              'top-right': Math.hypot(distRight, distTop),
+              'bottom-left': Math.hypot(distLeft, distBottom),
+              'bottom-right': Math.hypot(distRight, distBottom),
+            };
+            const edge = resolveDesktopSnapEdge(distances);
+            const stageCenterX = stageLeft + stageSize / 2;
+            const nextMenuPlacement: PetMenuPlacement = stageCenterX > workLeft + workArea.size.width / 2 ? 'left' : 'right';
+
+            setSnapEdge(edge);
+            setDesktopMenuPlacement(nextMenuPlacement);
+
+            let targetX = position.x;
+            let targetY = position.y;
+            if (edge === 'left') targetX = workLeft - drag.stageViewportLeft * drag.scale;
+            if (edge === 'right') targetX = workRight - stageSize - drag.stageViewportLeft * drag.scale;
+            if (edge === 'top') targetY = workTop - drag.stageViewportTop * drag.scale;
+            if (edge === 'bottom') targetY = workBottom - stageSize - drag.stageViewportTop * drag.scale;
+
+            targetX = Math.min(Math.max(targetX, workLeft), workRight - size.width);
+            targetY = Math.min(Math.max(targetY, workTop), workBottom - size.height);
+
+            const nextStageViewportLeft = edge === 'left'
+              ? 0
+              : edge === 'right'
+                ? window.innerWidth - STAGE_SIZE
+                : stageLeft / drag.scale - targetX / drag.scale;
+            const nextStageViewportTop = edge === 'top'
+              ? 0
+              : edge === 'bottom'
+                ? window.innerHeight - STAGE_SIZE
+                : stageTop / drag.scale - targetY / drag.scale;
+
+            await drag.coreApi.invoke('kanshan_set_snap_edge', { edge });
+            await drag.coreApi.invoke('kanshan_set_stage_position', {
+              x: nextStageViewportLeft * drag.scale,
+              y: nextStageViewportTop * drag.scale,
+            });
+
+            await drag.appWindow.setPosition(new drag.windowApi.PhysicalPosition(
+              Math.round(targetX),
+              Math.round(targetY),
+            ));
+          } catch (error) {
+            console.warn('[kanshan] failed to snap desktop window', error);
+          }
+        })();
+        return;
+      }
+
       const drag = stageDragRef.current;
       if (!drag) return;
 
@@ -412,9 +789,10 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     return (
       <section
         ref={stageRef}
-        className={`glb-stage${isStageDragging ? ' is-dragging' : ''}`}
+        className={`glb-stage${desktopMode ? ' glb-stage--desktop' : ''}${isStageDragging ? ' is-dragging' : ''}`}
+        data-snap-edge={desktopMode ? snapEdge : undefined}
         aria-label="刘看山 GLB 模型 Three.js 预览"
-        style={{ left: stagePosition.x, top: stagePosition.y }}
+        style={desktopMode ? desktopStageStyle : { left: stagePosition.x, top: stagePosition.y }}
         onPointerDown={handleStageDragStart}
         onPointerMove={handleStageDragMove}
         onPointerUp={handleStageDragEnd}
@@ -424,7 +802,11 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
           setIsStageHovered(false);
         }}
       >
-        <canvas ref={canvasRef} className="glb-canvas" />
+        <span className="stage-ground-shadow" aria-hidden="true" />
+        <canvas
+          ref={canvasRef}
+          className="glb-canvas"
+        />
         <p className="stage-credit">基于@刘看山 二创</p>
         <BubbleDialogue
           actionDialogueText={actionDialogueText}
@@ -432,6 +814,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
           chatDialoguePageIndex={chatDialoguePageIndex}
           chatDialoguePages={chatDialoguePages}
           isDialogueStreaming={isDialogueStreaming}
+          onDialogueHoverChange={setIsDialogueHovered}
           onChatDialoguePageIndexChange={setChatDialoguePageIndex}
           snapEdge={snapEdge}
         />
@@ -441,7 +824,6 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
           activeMenuItem={activeMenuItem}
           chatStatusText={chatStatusText}
           isActive={isMenuActive}
-          isChatFocused={isChatFocused}
           onChatFocusChange={setIsChatFocused}
           onMenuHoverChange={setIsMenuHovered}
           isDialogueStreaming={isDialogueStreaming}
@@ -465,7 +847,10 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
           className="direction-drag-handle"
           type="button"
           aria-label="左右拖动调整模型朝向"
-          onPointerDown={handleDirectionDragStart}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            handleDirectionDragStart(event);
+          }}
           onPointerMove={handleDirectionDragMove}
           onPointerUp={handleDirectionDragEnd}
           onPointerCancel={handleDirectionDragEnd}
@@ -485,6 +870,7 @@ interface BubbleDialogueProps {
   chatDialoguePages: string[];
   isDialogueStreaming: boolean;
   onChatDialoguePageIndexChange: React.Dispatch<React.SetStateAction<number>>;
+  onDialogueHoverChange: (hovered: boolean) => void;
   snapEdge: PetSnapEdge;
 }
 
@@ -495,6 +881,7 @@ function BubbleDialogue({
   chatDialoguePages,
   isDialogueStreaming,
   onChatDialoguePageIndexChange,
+  onDialogueHoverChange,
   snapEdge,
 }: BubbleDialogueProps) {
   const hasTrimmedDialogue = bubbleMode === 'chat' && chatDialoguePages.length > 1;
@@ -507,7 +894,13 @@ function BubbleDialogue({
   const isChatBubble = bubbleMode === 'chat';
 
   return (
-    <div className={`pet-dialogue-bubble pet-dialogue-bubble--${resolveDialoguePlacement(snapEdge)} pet-dialogue-bubble--${bubbleMode}`} role="status" aria-live="polite">
+    <div
+      className={`pet-dialogue-bubble pet-dialogue-bubble--${resolveDialoguePlacement(snapEdge)} pet-dialogue-bubble--${bubbleMode}`}
+      role="status"
+      aria-live="polite"
+      onPointerEnter={() => onDialogueHoverChange(true)}
+      onPointerLeave={() => onDialogueHoverChange(false)}
+    >
       {isChatBubble ? (
         <div className="pet-dialogue-chat-shell">
           {resolvedDialogueText ? (
@@ -538,7 +931,6 @@ interface KanshanHoverMenuProps {
   chatInput: string;
   chatStatusText: string;
   isActive: boolean;
-  isChatFocused: boolean;
   isDialogueStreaming: boolean;
   openPanel: 'props' | 'tasks' | 'chat' | null;
   placement: PetMenuPlacement;
@@ -565,7 +957,6 @@ function KanshanHoverMenu({
   chatInput,
   chatStatusText,
   isActive,
-  isChatFocused,
   isDialogueStreaming,
   openPanel,
   placement,
@@ -586,11 +977,20 @@ function KanshanHoverMenu({
   onOpenPanelChange,
 }: KanshanHoverMenuProps) {
   const isChatEntryActive = activeMenuItem === 'chat';
+  const closeMenuTimerRef = useRef<number | null>(null);
+
+  const clearCloseMenuTimer = () => {
+    if (closeMenuTimerRef.current === null) return;
+    window.clearTimeout(closeMenuTimerRef.current);
+    closeMenuTimerRef.current = null;
+  };
 
   const closeSubmenu = () => {
     onActiveMenuItemChange(null);
     onOpenPanelChange(null);
   };
+
+  useEffect(() => clearCloseMenuTimer, []);
 
   const handleSelectProp = (item: KanshanPropItem) => {
     onSelectProp(item);
@@ -617,6 +1017,17 @@ function KanshanHoverMenu({
     onOpenPanelChange(null);
   };
 
+  const closeMenuForPointerLeave = () => {
+    onMenuHoverChange(false);
+    clearCloseMenuTimer();
+    closeMenuTimerRef.current = window.setTimeout(() => {
+      onChatFocusChange(false);
+      onActiveMenuItemChange(null);
+      onOpenPanelChange(null);
+      closeMenuTimerRef.current = null;
+    }, 180);
+  };
+
   return (
     <>
       <div className="pet-reward-toast" role="status" aria-live="polite">
@@ -631,8 +1042,13 @@ function KanshanHoverMenu({
       <div
         className={`pet-hover-menu pet-hover-menu--${placement}${isActive ? ' is-active' : ''}`}
         aria-label="刘看山互动菜单"
+        onPointerEnter={() => {
+          clearCloseMenuTimer();
+          onMenuHoverChange(true);
+        }}
+        onPointerLeave={closeMenuForPointerLeave}
       >
-        <div className="pet-menu-actions" onPointerEnter={() => onMenuHoverChange(true)} onPointerLeave={() => { onMenuHoverChange(false); if (!isChatFocused) { onActiveMenuItemChange(null); onOpenPanelChange(null); } }}>
+        <div className="pet-menu-actions">
         <div className={`pet-menu-item${activeMenuItem === 'pat' ? ' is-open' : ''}`} onPointerEnter={() => handlePrimaryHover('pat')} onFocus={() => handlePrimaryHover('pat')}>
           <button className={`pet-menu-button${activeMenuItem === 'pat' ? ' is-menu-active' : ''}`} type="button" onClick={onPat}>
             <PatIcon />

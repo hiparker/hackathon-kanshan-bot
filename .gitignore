@@ -25,6 +25,10 @@ coverage/
 .tmp/
 .pnpm-store/
 
+# Tauri generated files
+apps/*/src-tauri/target/
+apps/*/src-tauri/gen/
+
 # Go backend (services/kanshan-server)
 services/**/bin/
 services/**/*.db

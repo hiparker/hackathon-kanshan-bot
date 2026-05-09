@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "刘看山",
+  "version": "0.1.0",
+  "identifier": "com.zhihu.kanshan.bot",
+  "build": {
+    "beforeDevCommand": "pnpm --filter @kanshan/react-host dev:desktop",
+    "beforeBuildCommand": "pnpm --filter @kanshan/react-host build:desktop",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../../react-host/dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "刘看山",
+        "width": 540,
+        "height": 430,
+        "minWidth": 540,
+        "minHeight": 430,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "center": true,
+        "shadow": false,
+        "visible": true,
+        "focus": true,
+        "acceptFirstMouse": true,
+        "backgroundColor": "#00000000"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "category": "Utility"
+  }
+}

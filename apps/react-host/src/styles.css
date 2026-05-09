@@ -4,8 +4,29 @@
   font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
+:root.kanshan-desktop-mode,
+:root.kanshan-desktop-mode body {
+  background: transparent !important;
+  background-color: transparent !important;
+  color-scheme: light;
+}
+
 body {
   margin: 0;
+}
+
+body.kanshan-desktop-mode {
+  overflow: hidden;
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+body.kanshan-desktop-mode #root {
+  width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
+  background: transparent !important;
+  background-color: transparent !important;
 }
 
 code {
@@ -48,6 +69,49 @@ button:disabled {
   box-sizing: border-box;
   background: #f7f2e8;
   padding: 28px;
+}
+
+.glb-shell--desktop {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
+  overflow: visible;
+  background: transparent !important;
+  background-color: transparent !important;
+  padding: 0;
+  pointer-events: none;
+}
+
+.glb-shell--desktop .glb-stage {
+  z-index: 1;
+}
+
+.glb-stage--desktop {
+  position: fixed;
+  width: 300px;
+  height: 300px;
+  min-height: 300px;
+  background: transparent;
+  background-color: transparent;
+  pointer-events: none;
+  transition: left 240ms cubic-bezier(.2,.8,.2,1), right 240ms cubic-bezier(.2,.8,.2,1), top 240ms cubic-bezier(.2,.8,.2,1), bottom 240ms cubic-bezier(.2,.8,.2,1);
+  overflow: visible;
+}
+
+.glb-stage--desktop .glb-canvas {
+  width: 300px;
+  height: 300px;
+  min-height: 300px;
+  pointer-events: auto;
+  cursor: grab;
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+.glb-stage--desktop:active .glb-canvas,
+.glb-stage--desktop.is-dragging .glb-canvas {
+  cursor: grabbing;
 }
 
 .glb-main-panel {
@@ -717,6 +781,7 @@ button:disabled {
   right: auto;
   width: 320px;
   max-width: 320px;
+  pointer-events: auto;
   transform: translateX(-50%);
   text-align: left;
 }
@@ -1235,4 +1300,480 @@ button:disabled {
 .pet-chat-submit:disabled {
   background: rgba(255, 254, 249, 0.06);
   color: rgba(255, 254, 249, 0.38);
+}
+
+.stage-ground-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: 31px;
+  z-index: 0;
+  width: 64%;
+  height: 38px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(86, 90, 96, 0.22) 0%, rgba(116, 120, 126, 0.14) 45%, transparent 72%);
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .glb-canvas {
+  position: relative;
+  z-index: 1;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .stage-credit {
+  bottom: 48px;
+  z-index: 2;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .direction-drag-handle {
+  bottom: 17px;
+  z-index: 5;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-bubble {
+  top: 10%;
+  max-width: 168px;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-bubble--right {
+  right: auto;
+  left: calc(50% + 34px);
+  text-align: left;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-bubble--left {
+  right: calc(50% + 34px);
+  left: auto;
+  text-align: right;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-bubble--chat {
+  right: auto;
+  left: 50%;
+  width: 216px;
+  max-width: 216px;
+  pointer-events: auto;
+  text-align: left;
+  transform: translateX(-50%);
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-chat-shell {
+  width: 216px;
+  max-width: 216px;
+  border-radius: 14px;
+  padding: 7px 10px 9px;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-content--action,
+body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-bubble > span {
+  min-width: 92px;
+  border-radius: 14px;
+  font-size: 10px;
+  line-height: 1.28;
+  padding: 7px 9px 9px;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-content--chat {
+  font-size: 10px;
+  line-height: 1.28;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-content--action::after,
+body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-bubble > span::after,
+body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-chat-shell::after {
+  bottom: -7px;
+  width: 14px;
+  height: 8px;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-hover-menu--right {
+  top: 56%;
+  right: auto;
+  bottom: auto;
+  left: calc(50% + 72px);
+  transform: translate(8px, -50%);
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-hover-menu--left {
+  top: 56%;
+  right: calc(50% + 72px);
+  bottom: auto;
+  left: auto;
+  transform: translate(-8px, -50%);
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-hover-menu--right.is-active {
+  transform: translate(0, -50%);
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-hover-menu--left.is-active {
+  transform: translate(0, -50%);
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-menu-actions {
+  gap: 2px;
+  border-radius: 999px;
+  padding: 3px;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-hover-menu--left .pet-menu-actions,
+body.kanshan-desktop-mode .glb-stage--desktop .pet-hover-menu--right .pet-menu-actions {
+  flex-direction: column;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-menu-button {
+  position: relative;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-radius: 999px;
+  font-size: 0;
+  padding: 0;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-menu-icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.7;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-menu-button > span {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  display: block;
+  width: max-content;
+  max-width: 72px;
+  border-radius: 999px;
+  background: rgba(17, 20, 23, 0.72);
+  color: rgba(255, 254, 249, 0.9);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0;
+  padding: 4px 6px;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  white-space: nowrap;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-menu-button:hover > span,
+body.kanshan-desktop-mode .glb-stage--desktop .pet-menu-button:focus-visible > span,
+body.kanshan-desktop-mode .glb-stage--desktop .pet-menu-button.is-menu-active > span {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-submenu {
+  gap: 3px;
+  width: min(124px, calc(100vw - 40px));
+  border-radius: 10px;
+  padding: 4px;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-hover-menu--right .pet-submenu {
+  top: 0;
+  right: auto;
+  bottom: auto;
+  left: calc(100% + 7px);
+  transform: scale(0.98);
+  transform-origin: left center;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-hover-menu--left .pet-submenu {
+  top: 0;
+  right: calc(100% + 7px);
+  bottom: auto;
+  left: auto;
+  transform: scale(0.98);
+  transform-origin: right center;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-hover-menu--left .pet-menu-item.is-open .pet-submenu,
+body.kanshan-desktop-mode .glb-stage--desktop .pet-hover-menu--right .pet-menu-item.is-open .pet-submenu {
+  transform: scale(1);
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-submenu--wide,
+body.kanshan-desktop-mode .glb-stage--desktop .pet-submenu--chat {
+  width: min(140px, calc(100vw - 40px));
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-submenu-row {
+  gap: 5px;
+  border-radius: 7px;
+  font-size: 9px;
+  line-height: 1.15;
+  padding: 4px 5px;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-chat-input {
+  min-height: 34px;
+  border-radius: 7px;
+  font-size: 9px;
+  line-height: 1.25;
+  padding: 4px 6px;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-chat-input::placeholder,
+body.kanshan-desktop-mode .glb-stage--desktop .pet-chat-status {
+  font-size: 9px;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-chat-footer {
+  gap: 5px;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-chat-submit,
+body.kanshan-desktop-mode .glb-stage--desktop .pet-submenu-state button {
+  min-height: 20px;
+  font-size: 9px;
+  padding: 4px 6px;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager {
+  gap: 5px;
+  right: -12px;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
+  min-width: 22px;
+  font-size: 10px;
+  padding: 4px 0;
+}
+
+.glb-stage {
+  width: 300px;
+  height: 300px;
+  min-height: 300px;
+}
+
+.glb-stage .glb-canvas {
+  min-height: 300px;
+}
+
+.glb-stage .stage-credit {
+  bottom: 48px;
+}
+
+.glb-stage .direction-drag-handle {
+  bottom: 17px;
+}
+
+.glb-stage .pet-dialogue-bubble {
+  top: 10%;
+  max-width: 168px;
+}
+
+.glb-stage .pet-dialogue-bubble--right {
+  right: auto;
+  left: calc(50% + 34px);
+  text-align: left;
+}
+
+.glb-stage .pet-dialogue-bubble--left {
+  right: calc(50% + 34px);
+  left: auto;
+  text-align: right;
+}
+
+.glb-stage .pet-dialogue-bubble--chat {
+  right: auto;
+  left: 50%;
+  width: 216px;
+  max-width: 216px;
+  pointer-events: auto;
+  text-align: left;
+  transform: translateX(-50%);
+}
+
+.glb-stage .pet-dialogue-chat-shell {
+  width: 216px;
+  max-width: 216px;
+  border-radius: 14px;
+  padding: 7px 10px 9px;
+}
+
+.glb-stage .pet-dialogue-content--action,
+.glb-stage .pet-dialogue-bubble > span {
+  min-width: 92px;
+  border-radius: 14px;
+  font-size: 10px;
+  line-height: 1.28;
+  padding: 7px 9px 9px;
+}
+
+.glb-stage .pet-dialogue-content--chat {
+  font-size: 10px;
+  line-height: 1.28;
+}
+
+.glb-stage .pet-dialogue-content--action::after,
+.glb-stage .pet-dialogue-bubble > span::after,
+.glb-stage .pet-dialogue-chat-shell::after {
+  bottom: -7px;
+  width: 14px;
+  height: 8px;
+}
+
+.glb-stage .pet-hover-menu--right {
+  top: 56%;
+  right: auto;
+  bottom: auto;
+  left: calc(50% + 72px);
+  transform: translate(8px, -50%);
+}
+
+.glb-stage .pet-hover-menu--left {
+  top: 56%;
+  right: calc(50% + 72px);
+  bottom: auto;
+  left: auto;
+  transform: translate(-8px, -50%);
+}
+
+.glb-stage .pet-hover-menu--right.is-active {
+  transform: translate(0, -50%);
+}
+
+.glb-stage .pet-hover-menu--left.is-active {
+  transform: translate(0, -50%);
+}
+
+.glb-stage .pet-menu-actions {
+  gap: 2px;
+  border-radius: 999px;
+  padding: 3px;
+}
+
+.glb-stage .pet-hover-menu--left .pet-menu-actions,
+.glb-stage .pet-hover-menu--right .pet-menu-actions {
+  flex-direction: column;
+}
+
+.glb-stage .pet-menu-button {
+  position: relative;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-radius: 999px;
+  font-size: 0;
+  padding: 0;
+}
+
+.glb-stage .pet-menu-icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.7;
+}
+
+.glb-stage .pet-menu-button > span {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  display: block;
+  width: max-content;
+  max-width: 72px;
+  border-radius: 999px;
+  background: rgba(17, 20, 23, 0.72);
+  color: rgba(255, 254, 249, 0.9);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0;
+  padding: 4px 6px;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  white-space: nowrap;
+}
+
+.glb-stage .pet-menu-button:hover > span,
+.glb-stage .pet-menu-button:focus-visible > span,
+.glb-stage .pet-menu-button.is-menu-active > span {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.glb-stage .pet-submenu {
+  gap: 3px;
+  width: min(124px, calc(100vw - 40px));
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.glb-stage .pet-hover-menu--right .pet-submenu {
+  top: 0;
+  right: auto;
+  bottom: auto;
+  left: calc(100% + 7px);
+  transform: scale(0.98);
+  transform-origin: left center;
+}
+
+.glb-stage .pet-hover-menu--left .pet-submenu {
+  top: 0;
+  right: calc(100% + 7px);
+  bottom: auto;
+  left: auto;
+  transform: scale(0.98);
+  transform-origin: right center;
+}
+
+.glb-stage .pet-hover-menu--left .pet-menu-item.is-open .pet-submenu,
+.glb-stage .pet-hover-menu--right .pet-menu-item.is-open .pet-submenu {
+  transform: scale(1);
+}
+
+.glb-stage .pet-submenu--wide,
+.glb-stage .pet-submenu--chat {
+  width: min(140px, calc(100vw - 40px));
+}
+
+.glb-stage .pet-submenu-row {
+  gap: 5px;
+  border-radius: 7px;
+  font-size: 9px;
+  line-height: 1.15;
+  padding: 4px 5px;
+}
+
+.glb-stage .pet-chat-input {
+  min-height: 34px;
+  border-radius: 7px;
+  font-size: 9px;
+  line-height: 1.25;
+  padding: 4px 6px;
+}
+
+.glb-stage .pet-chat-input::placeholder,
+.glb-stage .pet-chat-status {
+  font-size: 9px;
+}
+
+.glb-stage .pet-chat-footer {
+  gap: 5px;
+}
+
+.glb-stage .pet-chat-submit,
+.glb-stage .pet-submenu-state button {
+  min-height: 20px;
+  font-size: 9px;
+  padding: 4px 6px;
+}
+
+.glb-stage .pet-dialogue-pager {
+  gap: 5px;
+  right: -12px;
+}
+
+.glb-stage .pet-dialogue-pager button {
+  min-width: 22px;
+  font-size: 10px;
+  padding: 4px 0;
 }

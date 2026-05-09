@@ -93,7 +93,9 @@ interface ProgressTaskResponse {
   rewards_granted?: Array<{ kind: string; item_id?: string; qty?: number }>;
 }
 
-const API_PREFIX = '/api';
+const IS_DESKTOP_PROD = import.meta.env.MODE === 'desktop' && import.meta.env.PROD;
+const CONFIGURED_API_BASE_URL = import.meta.env.VITE_KANSHAN_API_BASE_URL || 'http://localhost:8787';
+const API_PREFIX = IS_DESKTOP_PROD ? CONFIGURED_API_BASE_URL.replace(/\/$/, '') : '/api';
 const AUTH_STORAGE_KEY = 'kanshan.session';
 const DEV_AUTH_CODE = import.meta.env.VITE_KANSHAN_AUTH_CODE || 'local-dev';
 const TASK_PERIODS = ['daily', 'weekly', 'story', 'challenge'] as const;

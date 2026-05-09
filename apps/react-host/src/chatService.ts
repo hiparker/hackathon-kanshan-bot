@@ -20,6 +20,12 @@ interface OpenAiStreamChunk {
   choices?: OpenAiStreamChoice[];
 }
 
+const IS_DESKTOP_PROD = import.meta.env.MODE === 'desktop' && import.meta.env.PROD;
+const OPENAI_BASE_URL = import.meta.env.VITE_OPENAI_BASE_URL?.replace(/\/$/, '') ?? '';
+const CHAT_COMPLETIONS_URL = IS_DESKTOP_PROD && OPENAI_BASE_URL
+  ? `${OPENAI_BASE_URL}/chat/completions`
+  : '/proxy-openai/chat/completions';
+
 function consumeSseBuffer(
   buffer: string,
   onText: (text: string) => void,
@@ -131,7 +137,7 @@ async function fetchOpenAiStream(
     };
   }
 
-  const response = await fetch('/proxy-openai/chat/completions', {
+  const response = await fetch(CHAT_COMPLETIONS_URL, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
