@@ -22,15 +22,41 @@ export interface KanshanThreeRuntimeOptions {
 
 export type KanshanClipPreference = string | { clipName: string; weight?: number };
 
-type EffectId = 'heart' | 'sweat' | 'music-note';
+type EffectId = 'heart' | 'sweat' | 'music-note' | 'zhihu-call' | 'sleepy-zzz' | 'sick-dizzy' | 'hungry-growl';
 type SlotMap = Record<PetSlot, THREE.Group>;
 type KanshanMaterialMode = 'pbr' | 'texture' | 'toon-bw';
 
 const ink = 0x17202a;
 const white = 0xffffff;
+/** 知乎品牌蓝，运动「打 call」粒子 */
+const zhihuBlue = 0x0084ff;
 const boardBrown = 0x8a6a44;
 const heartRed = 0xe94560;
 const sweatBlue = 0x62b6dd;
+/** 人死魂离：冷雾为主，一丝残余体温 */
+const departOuterMist = 0xc8dae8;
+const departSoulBody = 0xe4edf8;
+const departWarmFaint = 0xfff3eb;
+const departCoreChill = 0xd2dff2;
+const departTetherLine = 0x9eb4cc;
+const departSpark = 0xeef4fc;
+/** 犯困 ZZZ，偏蓝灰易辨认 */
+const sleepyZColor = 0x4a5f78;
+/** 生病头晕：螺旋 + 金星（浅色、弱对比） */
+const dizzyGlow = 0xf5f3ff;
+const dizzySpiral = 0xb39ddb;
+const dizzyStar = 0xffe082;
+/** 饥饿：暖橙波浪（肚子叫）+ 空碗轮廓 */
+const hungryWarm = 0xffab91;
+const hungryDeep = 0xff7043;
+const hungryBowl = 0xd84315;
+
+/**
+ * GLB 内真实 clip 名（与 react-host `kanshanClipAliasMap` 语义→原始 一致）。
+ * 语义 Breakdance_1990 → Dozing_Elderly；语义 Hip_Hop_Dance → Gangnam_Groove。
+ * 勿写 Hip_Hop_Dance：该原始名对应语义 Walking，会误触发音符。
+ */
+const CLIPS_WITH_MUSIC_NOTES = new Set(['Dozing_Elderly', 'Gangnam_Groove']);
 
 const slotOffsets: Record<PetSlot, [number, number, number]> = {
   head: [-0.2, 1.06, 0.5],
@@ -73,6 +99,11 @@ export class KanshanThreeRuntime implements KanshanRuntimeBridge {
   private effect: THREE.Object3D | null = null;
   private effectStartedAt = 0;
   private effectDuration = 1.2;
+  private effectBaseScale = 1;
+  /** 当前播放中的特效类型（用于单独调节淡出/缩放） */
+  private activeEffectId: EffectId | null = null;
+  /** 死亡通知：灵魂离体向上飘散 */
+  private soulFloatRoot: THREE.Group | null = null;
 
   constructor(options: KanshanThreeRuntimeOptions) {
     this.canvas = options.canvas;
@@ -168,15 +199,19 @@ export class KanshanThreeRuntime implements KanshanRuntimeBridge {
         break;
       }
       case 'playAction':
+        if (command.action !== 'death-notice') this.clearDeathNoticePresentation();
         this.currentAction = command.action;
         this.emit({ type: 'actionStart', action: command.action });
+        if (command.action === 'death-notice') this.enterDeathNoticePresentation();
         this.playActionClip(command.action, command.loop ?? false, command.repetitions);
         if (!this.mixer && !command.loop) this.emit({ type: 'actionEnd', action: command.action });
         break;
       case 'playClip':
+        this.clearDeathNoticePresentation();
         this.playRawClip(command.clipName, command.loop ?? false, command.repetitions);
         break;
       case 'setMood':
+        this.clearDeathNoticePresentation();
         this.currentAction = command.mood === 'normal' ? 'idle' : command.mood;
         this.emit({ type: 'actionStart', action: this.currentAction });
         this.playActionClip(this.currentAction, true);
@@ -186,7 +221,7 @@ export class KanshanThreeRuntime implements KanshanRuntimeBridge {
         this.emit({ type: 'propEquipped', slot: command.slot, propId: command.propId });
         break;
       case 'showEffect':
-        this.showEffect(command.effectId, command.slot ?? 'emotion', command.durationMs ?? 1200);
+        this.showEffect(command.effectId, command.slot ?? 'emotion', command.durationMs ?? 1200, 1);
         break;
       case 'setPosition':
         this.modelRoot.position.set(command.x, command.y, command.z ?? 0);
@@ -245,6 +280,20 @@ export class KanshanThreeRuntime implements KanshanRuntimeBridge {
       return;
     }
     this.playClip(clip, loop, repetitions);
+    this.triggerMusicNotesIfDanceClip(clip.name, action);
+    this.triggerZhihuSportCheerIfRun(action);
+    if (action === 'sleepy') {
+      this.triggerSleepyZzzEffect();
+    }
+    if (action === 'sick') {
+      this.triggerSickDizzyEffect();
+    }
+    if (action === 'hungry') {
+      this.triggerHungryGrowlEffect();
+    }
+    if (action === 'happy' && !CLIPS_WITH_MUSIC_NOTES.has(clip.name)) {
+      this.triggerHappyHeartAndFingerHeart();
+    }
     this.activeActionEnd = loop && !repetitions ? null : action;
     this.activeRawClipEnd = null;
     this.emit({ type: 'animationClipStart', action, clipName: clip.name, durationMs: getClipPlaybackDurationMs(clip, loop, repetitions), loop: loop && !repetitions });
@@ -258,6 +307,7 @@ export class KanshanThreeRuntime implements KanshanRuntimeBridge {
       return;
     }
     this.playClip(clip, loop, repetitions);
+    this.triggerMusicNotesIfDanceClip(clip.name, this.currentAction);
     this.activeActionEnd = null;
     this.activeRawClipEnd = loop && !repetitions ? null : clip.name;
     this.emit({ type: 'rawClipStart', clipName: clip.name, durationMs: getClipPlaybackDurationMs(clip, loop, repetitions), loop: loop && !repetitions });
@@ -372,13 +422,118 @@ export class KanshanThreeRuntime implements KanshanRuntimeBridge {
     this.equippedProps.set(slot, prop);
   }
 
-  private showEffect(effectId: string, slot: PetSlot, durationMs: number): void {
+  private enterDeathNoticePresentation(): void {
+    if (this.soulFloatRoot) return;
+    const soul = createSoulLeavingEffect();
+    soul.name = 'DeathNoticeSoulLeaving';
+    this.slots.head.add(soul);
+    soul.position.set(0.02, -0.16, 0.2);
+    this.soulFloatRoot = soul;
+  }
+
+  private clearDeathNoticePresentation(): void {
+    if (!this.soulFloatRoot) return;
+    this.soulFloatRoot.parent?.remove(this.soulFloatRoot);
+    disposeObject(this.soulFloatRoot);
+    this.soulFloatRoot = null;
+  }
+
+  private applySoulLeavingAnimation(elapsed: number): void {
+    if (!this.soulFloatRoot) return;
+    const cycle = 2.55;
+    const rootPhase = (this.soulFloatRoot.userData.phase as number) ?? 0;
+    this.soulFloatRoot.children.forEach((child, index) => {
+      const offset = (child.userData.offset as number) ?? 0;
+      const drift = (child.userData.drift as number) ?? 0.2;
+      const t = (elapsed * drift + offset + rootPhase) % cycle;
+      const u = t / cycle;
+      const depart = u * u * (3 - 2 * u);
+      const rise = -0.12 + depart * 1.78;
+      const pulse = Math.sin(u * Math.PI);
+      const base = (child.userData.opacityBase as number) ?? 0.5;
+      const breathe = 0.92 + pulse * 0.18 + Math.sin(elapsed * 2.1 + offset) * 0.035;
+      const role = (child.userData.soulRole as string) ?? 'core';
+
+      if (child instanceof THREE.Mesh) {
+        child.position.y = rise + ((child.userData.yBias as number) ?? 0);
+        child.position.x =
+          Math.sin(elapsed * 2.05 + offset) * 0.12 +
+          Math.cos(elapsed * 1.15 + offset * 0.5) * 0.07 +
+          ((index % 5) - 2) * 0.035;
+        child.position.z =
+          0.032 + Math.sin(elapsed * 1.55 + offset) * 0.075 + Math.cos(elapsed * 1.75 + index) * 0.048;
+        child.rotation.z = Math.sin(elapsed * 1.85 + offset) * 0.32 + Math.cos(elapsed * 0.85 + offset * 0.35) * 0.14;
+
+        let opacityMul = 1;
+        let scaleMul = 0.84 + depart * 0.2;
+        if (role === 'tether') {
+          opacityMul = Math.max(0.08, 1 - u * 1.05);
+          scaleMul = 0.78 + u * 0.18;
+        } else if (role === 'spark') {
+          const reveal = Math.max(0, Math.min(1, (u - 0.12) / 0.78));
+          opacityMul = 0.28 + 0.72 * reveal;
+          scaleMul = 0.72 + depart * 0.26;
+        } else {
+          opacityMul = 0.36 + 0.62 * depart;
+        }
+
+        setOpacity(child, Math.min(0.94, base * opacityMul + pulse * (role === 'tether' ? 0.06 : 0.18)));
+        child.scale.setScalar((child.userData.baseScale as number) * breathe * scaleMul);
+      }
+    });
+  }
+
+  private applyDeathNoticeSoulDrift(elapsed: number): void {
+    const sway = Math.sin(elapsed * 1.45);
+    const bob = Math.sin(elapsed * 2.35) * 0.026;
+    this.modelRoot.position.copy(this.modelBasePosition);
+    this.modelRoot.position.y += bob;
+    this.modelRoot.rotation.y = THREE.MathUtils.degToRad(this.currentYaw) + sway * 0.058;
+    this.modelRoot.rotation.x = -0.085 + Math.sin(elapsed * 0.92) * 0.028;
+    this.modelRoot.rotation.z = Math.sin(elapsed * 1.15) * 0.048;
+  }
+
+  private triggerHappyHeartAndFingerHeart(): void {
+    this.showEffect('heart', 'emotion', 2600, 0.82);
+  }
+
+  private triggerMusicNotesIfDanceClip(clipName: string, action: PetAction): void {
+    if (action === 'sleepy') return;
+    if (!CLIPS_WITH_MUSIC_NOTES.has(clipName)) return;
+    this.showEffect('music-note', 'emotion', 2400, 0.92);
+  }
+
+  /** 运动（run）时为知乎运动健儿打 call：知乎蓝星光粒子 */
+  private triggerZhihuSportCheerIfRun(action: PetAction): void {
+    if (action !== 'run') return;
+    this.showEffect('zhihu-call', 'emotion', 3600, 1.78);
+  }
+
+  /** 犯困：头顶飘起 ZZZ 瞌睡符号 */
+  private triggerSleepyZzzEffect(): void {
+    this.showEffect('sleepy-zzz', 'head', 4500, 1.55);
+  }
+
+  /** 生病：头晕（螺旋 + 金星） */
+  private triggerSickDizzyEffect(): void {
+    this.showEffect('sick-dizzy', 'emotion', 4300, 1.12);
+  }
+
+  /** 饥饿：肚子咕咕波浪 + 空碗 */
+  private triggerHungryGrowlEffect(): void {
+    this.showEffect('hungry-growl', 'emotion', 4000, 1.32);
+  }
+
+  private showEffect(effectId: string, slot: PetSlot, durationMs: number, initialScale = 1): void {
     if (this.effect) {
       this.effect.parent?.remove(this.effect);
       disposeObject(this.effect);
       this.effect = null;
     }
+    this.activeEffectId = effectId as EffectId;
+    this.effectBaseScale = initialScale;
     const effect = createEffect(effectId as EffectId);
+    effect.scale.setScalar(initialScale);
     this.effect = effect;
     this.effectStartedAt = this.clock.elapsedTime;
     this.effectDuration = durationMs / 1000;
@@ -410,12 +565,20 @@ export class KanshanThreeRuntime implements KanshanRuntimeBridge {
     const delta = this.clock.getDelta();
     this.mixer?.update(delta);
     if (!this.mixer) this.applyModelMotion(elapsed);
+    if (this.currentAction === 'death-notice' && this.mixer) this.applyDeathNoticeSoulDrift(elapsed);
+    if (this.currentAction === 'death-notice') this.applySoulLeavingAnimation(elapsed);
+    if (this.currentAction === 'happy') this.applyHappyFingerHeart(elapsed);
+    else this.resetHappyHandSlots();
     this.applyEffect(elapsed);
     this.renderer.render(this.scene, this.camera);
     this.frameId = window.requestAnimationFrame(this.animate);
   };
 
   private applyModelMotion(elapsed: number): void {
+    if (this.currentAction === 'death-notice') {
+      this.applyDeathNoticeSoulDrift(elapsed);
+      return;
+    }
     const bob = Math.sin(elapsed * 2.6);
     this.modelRoot.rotation.y = THREE.MathUtils.degToRad(this.currentYaw) + Math.sin(elapsed * 0.7) * 0.06;
     this.modelRoot.position.copy(this.modelBasePosition);
@@ -441,6 +604,31 @@ export class KanshanThreeRuntime implements KanshanRuntimeBridge {
     this.modelRoot.rotation.z = 0;
   }
 
+  private applyHappyFingerHeart(elapsed: number): void {
+    const pulse = Math.sin(elapsed * 4.4);
+    const lift = 0.22 + pulse * 0.045;
+    const inward = 0.2 + pulse * 0.035;
+    const [lx, ly, lz] = slotOffsets['hand-left'];
+    const [rx, ry, rz] = slotOffsets['hand-right'];
+    const hl = this.slots['hand-left'];
+    const hr = this.slots['hand-right'];
+    hl.position.set(lx + inward, ly + lift, lz);
+    hr.position.set(rx - inward, ry + lift * 0.92, rz);
+    hl.rotation.z = 0.5 + pulse * 0.07;
+    hr.rotation.z = -0.5 - pulse * 0.07;
+    hl.rotation.y = 0.12;
+    hr.rotation.y = -0.12;
+  }
+
+  private resetHappyHandSlots(): void {
+    for (const key of ['hand-left', 'hand-right'] as const) {
+      const [x, y, z] = slotOffsets[key];
+      const slot = this.slots[key];
+      slot.position.set(x, y, z);
+      slot.rotation.set(0, 0, 0);
+    }
+  }
+
   private applyEffect(elapsed: number): void {
     if (!this.effect) return;
     const progress = (elapsed - this.effectStartedAt) / this.effectDuration;
@@ -448,11 +636,33 @@ export class KanshanThreeRuntime implements KanshanRuntimeBridge {
       this.effect.parent?.remove(this.effect);
       disposeObject(this.effect);
       this.effect = null;
+      this.effectBaseScale = 1;
+      this.activeEffectId = null;
       return;
     }
-    this.effect.position.y = progress * 0.55;
-    this.effect.scale.setScalar(1 + progress * 0.18);
-    setOpacity(this.effect, 1 - progress);
+    const isCheer = this.activeEffectId === 'zhihu-call';
+    const isDizzy = this.activeEffectId === 'sick-dizzy';
+    this.effect.position.y = progress * (isCheer ? 0.72 : isDizzy ? 0.52 : 0.58);
+    const growth = 1 + progress * (this.effectBaseScale < 1 ? 0.28 : isCheer ? 0.14 : 0.18);
+    const pulse = isCheer
+      ? 1 + 0.11 * Math.sin(elapsed * 12)
+      : isDizzy
+        ? 1 + 0.06 * Math.sin(elapsed * 10)
+        : 1;
+    this.effect.scale.setScalar(this.effectBaseScale * growth * pulse);
+    if (isDizzy) this.effect.rotation.z = elapsed * 2.65;
+
+    let opacity: number;
+    if (isCheer) {
+      opacity = progress < 0.48 ? 1 : 1 - (progress - 0.48) / 0.52;
+    } else if (isDizzy) {
+      opacity = progress < 0.42 ? 1 : 1 - (progress - 0.42) / 0.58;
+    } else if (this.effectBaseScale < 1) {
+      opacity = progress < 0.45 ? 1 : 1 - (progress - 0.45) / 0.55;
+    } else {
+      opacity = 1 - progress;
+    }
+    setOpacity(this.effect, Math.max(0, opacity));
   }
 
   private emit(event: PetRuntimeEvent): void {
@@ -674,6 +884,112 @@ function createProp(propId: string): THREE.Object3D | null {
   return null;
 }
 
+/**
+ * 死亡通知：人死魂离——躯壳下牵绊缕线 + 渐冷的灵团升空（动画里缕断、魂显）。
+ */
+function createSoulLeavingEffect(): THREE.Group {
+  const root = new THREE.Group();
+  root.userData.phase = 0;
+  const S = 1.5;
+  const zb = 0.006;
+  const zm = 0.016;
+  const zf = 0.026;
+
+  const pushMesh = (
+    mesh: THREE.Mesh<THREE.ShapeGeometry, THREE.MeshBasicMaterial>,
+    opts: { off: number; drift: number; op: number; yBias?: number; role?: 'core' | 'tether' | 'spark' },
+  ): void => {
+    mesh.userData.offset = opts.off;
+    mesh.userData.drift = opts.drift;
+    mesh.userData.baseScale = 1;
+    mesh.userData.opacityBase = opts.op;
+    mesh.userData.yBias = opts.yBias ?? 0;
+    mesh.userData.soulRole = opts.role ?? 'core';
+    root.add(mesh);
+  };
+
+  for (let ti = 0; ti < 5; ti += 1) {
+    const rx = (0.018 + (ti % 3) * 0.005) * S;
+    const ry = (0.055 + (ti % 2) * 0.018) * S;
+    const strand = ellipse(departTetherLine, rx, ry, zb - 0.003 + ti * 0.002);
+    strand.material.transparent = true;
+    strand.material.opacity = 0.28 + (ti % 3) * 0.08;
+    strand.position.set(((ti % 5) - 2) * 0.034 * S, (-0.14 - ti * 0.022) * S, -ti * 0.008);
+    strand.rotation.z = ((ti % 5) - 2) * 0.12;
+    pushMesh(strand, {
+      off: ti * 0.06,
+      drift: 0.17 + ti * 0.018,
+      op: strand.material.opacity,
+      role: 'tether',
+    });
+  }
+
+  const haloOuter = ellipse(departOuterMist, 0.138 * S, 0.148 * S, zb);
+  haloOuter.material.transparent = true;
+  haloOuter.material.opacity = 0.22;
+  haloOuter.position.y = 0.015 * S;
+  pushMesh(haloOuter, { off: 0, drift: 0.19, op: 0.22 });
+
+  const haloInner = ellipse(departSoulBody, 0.105 * S, 0.118 * S, zb + 0.004);
+  haloInner.material.transparent = true;
+  haloInner.material.opacity = 0.32;
+  haloInner.position.y = 0.018 * S;
+  pushMesh(haloInner, { off: 0.02, drift: 0.193, op: 0.32 });
+
+  const torso = ellipse(departWarmFaint, 0.098 * S, 0.058 * S, zm);
+  torso.material.transparent = true;
+  torso.material.opacity = 0.42;
+  torso.position.y = -0.058 * S;
+  pushMesh(torso, { off: 0.06, drift: 0.2, op: 0.42 });
+
+  const chest = ellipse(departCoreChill, 0.072 * S, 0.068 * S, zm + 0.003);
+  chest.material.transparent = true;
+  chest.material.opacity = 0.52;
+  chest.position.y = -0.008 * S;
+  pushMesh(chest, { off: 0.09, drift: 0.2, op: 0.52 });
+
+  const head = ellipse(0xfafcff, 0.056 * S, 0.062 * S, zf);
+  head.material.transparent = true;
+  head.material.opacity = 0.62;
+  head.position.y = 0.048 * S;
+  pushMesh(head, { off: 0.12, drift: 0.2, op: 0.62 });
+
+  const crown = ellipse(white, 0.026 * S, 0.028 * S, zf + 0.006);
+  crown.material.transparent = true;
+  crown.material.opacity = 0.42;
+  crown.position.y = 0.09 * S;
+  pushMesh(crown, { off: 0.14, drift: 0.2, op: 0.42 });
+
+  for (const side of [-1, 1] as const) {
+    const e = ellipse(ink, 0.014 * S, 0.018 * S, zf + 0.008);
+    e.position.set(side * 0.024 * S, 0.04 * S, 0.012);
+    e.material.transparent = true;
+    e.material.opacity = 0.62;
+    pushMesh(e, { off: 0.11, drift: 0.2, op: 0.62 });
+  }
+
+  const sparks = [departSpark, departCoreChill, departSoulBody, departWarmFaint, 0xdce6f5, 0xc9d8ee, white];
+  for (let j = 0; j < 8; j += 1) {
+    const m = ellipse(
+      sparks[j % sparks.length]!,
+      (0.022 + (j % 5) * 0.012) * S,
+      (0.02 + (j % 4) * 0.01) * S,
+      zm - 0.005 + (j % 6) * 0.002,
+    );
+    m.material.transparent = true;
+    m.material.opacity = 0.32 + (j % 3) * 0.12;
+    m.userData.offset = 0.42 + j * 0.32;
+    m.userData.drift = 0.13 + (j % 7) * 0.026;
+    m.userData.baseScale = 0.78 + (j % 5) * 0.06;
+    m.userData.opacityBase = m.material.opacity;
+    m.userData.yBias = -0.026 * j * S * 0.13;
+    m.userData.soulRole = 'spark';
+    root.add(m);
+  }
+
+  return root;
+}
+
 function createHolidayHat(): THREE.Group {
   const hat = new THREE.Group();
   const cone = new THREE.Shape();
@@ -706,22 +1022,30 @@ function createSkateboardProp(): THREE.Group {
 function createEffect(effectId: EffectId): THREE.Object3D {
   if (effectId === 'heart') return createHeart();
   if (effectId === 'sweat') return createDrop();
+  if (effectId === 'zhihu-call') return createZhihuSportCheerEffect();
+  if (effectId === 'sleepy-zzz') return createSleepyZzzEffect();
+  if (effectId === 'sick-dizzy') return createDizzinessEffect();
+  if (effectId === 'hungry-growl') return createHungryGrowlEffect();
   return createMusicNote();
 }
 
+/** 经典桃心参数曲线：x=16sin³t，y=13cos t − 5cos2t − 2cos3t − cos4t（常见 ♥ 轮廓） */
 function createHeart(): THREE.Group {
   const heart = new THREE.Group();
-  heart.add(ellipse(heartRed, 0.08, 0.08, 0.2));
-  const right = ellipse(heartRed, 0.08, 0.08, 0.2);
-  right.position.x = 0.1;
-  const left = ellipse(heartRed, 0.08, 0.08, 0.2);
-  left.position.x = -0.1;
-  const tip = new THREE.Shape();
-  tip.moveTo(-0.18, 0.0);
-  tip.quadraticCurveTo(0, -0.24, 0.18, 0.0);
-  tip.lineTo(0, -0.22);
-  tip.lineTo(-0.18, 0.0);
-  heart.add(left, right, shapeMesh(tip, heartRed, 0.2));
+  const shape = new THREE.Shape();
+  const segments = 56;
+  const scale = 0.0195;
+  for (let i = 0; i <= segments; i += 1) {
+    const t = (i / segments) * Math.PI * 2;
+    const px = 16 * Math.pow(Math.sin(t), 3);
+    const py = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+    const x = px * scale;
+    const y = py * scale;
+    if (i === 0) shape.moveTo(x, y);
+    else shape.lineTo(x, y);
+  }
+  shape.closePath();
+  heart.add(shapeMesh(shape, heartRed, 0.2));
   return heart;
 }
 
@@ -742,6 +1066,186 @@ function createMusicNote(): THREE.Group {
   head.position.set(-0.04, -0.1, 0);
   note.add(head);
   return note;
+}
+
+function letterZStroke(w: number, h: number, r: number, color: number, z: number): THREE.Group {
+  const hw = w / 2;
+  const hh = h / 2;
+  return strokePath(
+    [
+      [-hw, hh],
+      [hw, hh],
+      [-hw, -hh],
+      [hw, -hh],
+    ],
+    r,
+    color,
+    z,
+  );
+}
+
+function hungryWavyLine(
+  y: number,
+  length: number,
+  amp: number,
+  phase: number,
+  color: number,
+  z: number,
+  lineW: number,
+): THREE.Group {
+  const steps = 20;
+  const pts: Array<[number, number]> = [];
+  for (let i = 0; i <= steps; i += 1) {
+    const t = i / steps;
+    const x = -length / 2 + t * length;
+    pts.push([x, y + amp * Math.sin(phase + t * 3.6 * Math.PI)]);
+  }
+  return strokePath(pts, lineW, color, z);
+}
+
+/** 波浪线 + 向上开口小碗（漫画里肚子饿 / 空肚子） */
+function createHungryGrowlEffect(): THREE.Group {
+  const root = new THREE.Group();
+  root.position.set(0.02, 0.06, 0.1);
+  const z0 = 0.12;
+  root.add(hungryWavyLine(0.14, 0.26, 0.022, 0.2, hungryWarm, z0, 0.014));
+  root.add(hungryWavyLine(0.1, 0.24, 0.018, 1.1, hungryDeep, z0 + 0.005, 0.013));
+  root.add(hungryWavyLine(0.06, 0.22, 0.016, 2.3, hungryWarm, z0 + 0.01, 0.012));
+
+  const bowl = strokePath(
+    [
+      [-0.09, 0.0],
+      [-0.05, -0.05],
+      [0, -0.075],
+      [0.05, -0.05],
+      [0.09, 0.0],
+    ],
+    0.016,
+    hungryBowl,
+    z0 - 0.01,
+  );
+  root.add(bowl);
+  const bowlInner = ellipse(hungryDeep, 0.045, 0.018, z0 - 0.008);
+  bowlInner.material.opacity = 0.35;
+  bowlInner.material.transparent = true;
+  bowlInner.position.set(0, -0.038, 0);
+  root.add(bowlInner);
+
+  return root;
+}
+
+/** 三枚 Z 斜向上升，经典瞌睡符号 */
+function createSleepyZzzEffect(): THREE.Group {
+  const root = new THREE.Group();
+  root.position.set(0.1, 0.2, 0.12);
+  const z1 = letterZStroke(0.22, 0.17, 0.022, sleepyZColor, 0.16);
+  z1.position.set(0, -0.05, 0);
+  z1.rotation.z = -0.05;
+  const z2 = letterZStroke(0.16, 0.13, 0.018, sleepyZColor, 0.18);
+  z2.position.set(0.11, 0.11, 0);
+  z2.rotation.z = 0.07;
+  const z3 = letterZStroke(0.12, 0.1, 0.015, sleepyZColor, 0.2);
+  z3.position.set(0.22, 0.26, 0);
+  z3.rotation.z = -0.06;
+  root.add(z1, z2, z3);
+  return root;
+}
+
+/** 阿基米德螺旋线 + 金星（卡通「眼冒金星 / 天旋地转」） */
+function createDizzinessEffect(): THREE.Group {
+  const root = new THREE.Group();
+  root.position.z = 0.11;
+  const z0 = 0.11;
+
+  const halo = ellipse(dizzyGlow, 0.14, 0.14, z0 - 0.03);
+  halo.material.opacity = 0.28;
+  halo.material.transparent = true;
+  root.add(halo);
+
+  const steps = 40;
+  const turns = 2.25;
+  const k = 0.023;
+  const spiralPts: Array<[number, number]> = [];
+  for (let i = 0; i <= steps; i += 1) {
+    const u = (i / steps) * turns * Math.PI * 2;
+    const r = k * u;
+    spiralPts.push([Math.cos(u) * r, Math.sin(u) * r]);
+  }
+  root.add(strokePath(spiralPts, 0.013, dizzySpiral, z0 + 0.02));
+
+  const starStroke = (cx: number, cy: number, size: number, z: number): THREE.Group => {
+    const g = new THREE.Group();
+    const s = size;
+    const w = 0.009;
+    g.add(strokePath([[-s, 0], [s, 0]], w, dizzyStar, z));
+    g.add(strokePath([[0, -s], [0, s]], w, dizzyStar, z));
+    g.add(strokePath([[-s * 0.68, -s * 0.68], [s * 0.68, s * 0.68]], w * 0.85, dizzyStar, z + 0.005));
+    g.add(strokePath([[s * 0.68, -s * 0.68], [-s * 0.68, s * 0.68]], w * 0.85, dizzyStar, z + 0.005));
+    g.position.set(cx, cy, 0);
+    return g;
+  };
+
+  root.add(starStroke(0.12, 0.08, 0.035, z0 + 0.03));
+  root.add(starStroke(-0.1, 0.11, 0.03, z0 + 0.03));
+  root.add(starStroke(0.065, -0.09, 0.026, z0 + 0.03));
+
+  return root;
+}
+
+/** 大号星光环 + 放射线，知乎蓝高对比，便于辨认「打 call」 */
+function createZhihuSportCheerEffect(): THREE.Group {
+  const root = new THREE.Group();
+  root.position.z = 0.12;
+  const ringOuter = ellipse(0x005eb8, 0.14, 0.14, 0.08);
+  ringOuter.material.opacity = 0.55;
+  ringOuter.material.transparent = true;
+  root.add(ringOuter);
+  const ringInner = ellipse(zhihuBlue, 0.11, 0.11, 0.1);
+  ringInner.material.opacity = 0.88;
+  ringInner.material.transparent = true;
+  root.add(ringInner);
+
+  const pts: Array<[number, number, number, number]> = [
+    [0, 0.16, 0.095, 0.095],
+    [-0.22, 0.04, 0.078, 0.078],
+    [0.2, -0.07, 0.082, 0.082],
+    [-0.1, -0.2, 0.068, 0.068],
+    [0.14, 0.22, 0.074, 0.074],
+    [-0.18, -0.14, 0.065, 0.065],
+    [0.22, 0.12, 0.06, 0.06],
+    [-0.06, 0.24, 0.058, 0.058],
+  ];
+  for (let i = 0; i < pts.length; i += 1) {
+    const [x, y, rx, ry] = pts[i]!;
+    const col = i % 2 === 0 ? zhihuBlue : white;
+    const d = ellipse(col, rx, ry, 0.12 + (i % 5) * 0.006);
+    d.position.set(x, y, 0);
+    root.add(d);
+  }
+
+  const rayR = 0.024;
+  for (let a = 0; a < 8; a += 1) {
+    const ang = (a / 8) * Math.PI * 2;
+    const len = 0.2 + (a % 2) * 0.05;
+    const c = a % 2 === 0 ? zhihuBlue : white;
+    root.add(
+      strokePath(
+        [[0, 0], [Math.cos(ang) * len, Math.sin(ang) * len]],
+        rayR,
+        c,
+        0.14 + a * 0.004,
+      ),
+    );
+  }
+
+  const core = ellipse(white, 0.09, 0.09, 0.22);
+  core.material.opacity = 0.95;
+  core.material.transparent = true;
+  root.add(core);
+  const coreBlue = ellipse(zhihuBlue, 0.056, 0.056, 0.24);
+  coreBlue.material.opacity = 1;
+  root.add(coreBlue);
+  return root;
 }
 
 function outlinedRoundedRect(width: number, height: number, radius: number, z: number, color = white): THREE.Group {
