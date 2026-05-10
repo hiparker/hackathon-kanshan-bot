@@ -1,3 +1,4 @@
+use std::process::Command;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -53,7 +54,8 @@ pub fn run() {
             kanshan_set_snap_edge,
             kanshan_set_stage_position,
             kanshan_set_interactive_regions,
-            kanshan_set_passthrough_suppressed
+            kanshan_set_passthrough_suppressed,
+            kanshan_open_external_url
         ])
         .setup(|app| {
             configure_macos_app(app.handle());
@@ -139,6 +141,23 @@ fn kanshan_set_passthrough_suppressed(window: WebviewWindow, suppress: bool) {
     if let Some(state) = window.try_state::<DragState>() {
         state.0.lock().unwrap().passthrough_suppressed = suppress;
     }
+}
+
+#[tauri::command]
+fn kanshan_open_external_url(url: String) -> Result<(), String> {
+    if url != "https://zhida.ai/" {
+        return Err("unsupported external url".into());
+    }
+
+    let result = if cfg!(target_os = "macos") {
+        Command::new("open").arg(&url).spawn()
+    } else if cfg!(target_os = "windows") {
+        Command::new("cmd").args(["/C", "start", "", &url]).spawn()
+    } else {
+        Command::new("xdg-open").arg(&url).spawn()
+    };
+
+    result.map(|_| ()).map_err(|error| error.to_string())
 }
 
 fn normalize_snap_edge(edge: &str) -> Option<&'static str> {

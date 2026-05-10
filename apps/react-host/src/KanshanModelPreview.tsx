@@ -38,6 +38,9 @@ type DesktopWindowDragState = {
 const STAGE_SIZE = 300;
 /** 桌面端仅舞台中心 50% 触发窗口拖动；整舞台仍接收事件以兼顾菜单/气泡悬停。 */
 const DESKTOP_WINDOW_DRAG_MARGIN_FRAC = 0.25;
+const INTERACTION_GRACE_MS = 420;
+const ZHIDA_AI_URL = 'https://zhida.ai/';
+const CHAT_DIALOGUE_EMPTY_TEXT = '和我说点什么吧，我会在这里回应你。';
 
 function isInDesktopWindowDragBand(clientX: number, clientY: number, stageRect: DOMRectReadOnly) {
   const lx = clientX - stageRect.left;
@@ -48,9 +51,7 @@ function isInDesktopWindowDragBand(clientX: number, clientY: number, stageRect: 
 }
 
 const STAGE_SAFE_MARGIN = 0;
-const CHAT_DIALOGUE_MAX_WIDTH = 320;
-const CHAT_DIALOGUE_HORIZONTAL_PADDING = 28;
-const CHAT_DIALOGUE_MAX_HEIGHT = 46;
+const CHAT_DIALOGUE_VISIBLE_LINES = 3;
 
 function resolveMenuPlacement(snapEdge?: PetSnapEdge): PetMenuPlacement {
   if (snapEdge === 'right' || snapEdge === 'top-right' || snapEdge === 'bottom-right') return 'left';
@@ -164,25 +165,45 @@ function resolveDialoguePlacement(snapEdge: PetSnapEdge): DialoguePlacement {
 }
 
 
-function paginateDialogueByHeight(text: string, maxHeight: number): string[] {
+function paginateDialogueByHeight(text: string, shell: HTMLElement | null, lines: number): string[] {
   if (!text.trim()) return [];
   if (typeof document === 'undefined') return [text];
+  if (!shell) return [text];
 
-  const wrapper = document.createElement('div');
+  const shellStyle = window.getComputedStyle(shell);
+  const padLeft = parseFloat(shellStyle.paddingLeft) || 0;
+  const padRight = parseFloat(shellStyle.paddingRight) || 0;
+  const contentWidth = Math.max(0, shell.clientWidth - padLeft - padRight);
+
   const measurement = document.createElement('span');
-  wrapper.className = 'pet-dialogue-bubble pet-dialogue-bubble--chat';
   measurement.className = 'pet-dialogue-content pet-dialogue-content--chat';
-  wrapper.style.position = 'fixed';
-  wrapper.style.visibility = 'hidden';
-  wrapper.style.pointerEvents = 'none';
-  wrapper.style.left = '-9999px';
-  wrapper.style.top = '0';
-  wrapper.style.width = '320px';
-  wrapper.style.maxWidth = '320px';
-  wrapper.style.transform = 'none';
-  measurement.style.display = 'block';
-  wrapper.appendChild(measurement);
-  document.body.appendChild(wrapper);
+  measurement.setAttribute('aria-hidden', 'true');
+  measurement.style.position = 'absolute';
+  measurement.style.left = `${padLeft}px`;
+  measurement.style.top = '0';
+  measurement.style.width = `${contentWidth}px`;
+  measurement.style.maxWidth = `${contentWidth}px`;
+  measurement.style.minWidth = '0';
+  measurement.style.visibility = 'hidden';
+  measurement.style.pointerEvents = 'none';
+  measurement.style.zIndex = '-1';
+  measurement.style.margin = '0';
+  measurement.style.boxSizing = 'border-box';
+  measurement.style.whiteSpace = 'normal';
+  measurement.style.overflowWrap = 'anywhere';
+  measurement.style.wordBreak = 'break-word';
+
+  const previousPosition = shell.style.position;
+  if (!previousPosition) {
+    shell.style.position = 'relative';
+  }
+  shell.appendChild(measurement);
+
+  measurement.textContent = '一';
+  const singleLineHeight = measurement.getBoundingClientRect().height;
+  const fallbackFontSize = parseFloat(window.getComputedStyle(measurement).fontSize) || 13;
+  const lineHeight = singleLineHeight > 0 ? singleLineHeight : fallbackFontSize * 1.35;
+  const maxHeight = lineHeight * lines + lineHeight * 0.4;
 
   const fits = (content: string) => {
     measurement.textContent = content;
@@ -215,7 +236,11 @@ function paginateDialogueByHeight(text: string, maxHeight: number): string[] {
     start = fitEnd;
   }
 
-  document.body.removeChild(wrapper);
+  shell.removeChild(measurement);
+  if (!previousPosition) {
+    shell.style.position = '';
+  }
+
   return pages;
 }
 
@@ -249,7 +274,6 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
   function KanshanModelPreview({
     actionRevision,
     activeAction,
-    chatError,
     chatInput,
     desktopMode = false,
     menuDataStatus,
@@ -259,7 +283,6 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     taskItems,
     dialogueText,
     isDialogueStreaming = false,
-    lastUserMessage,
     onActionEnd,
     onClipNamesChange,
     onPatStart,
@@ -272,10 +295,13 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     onChatSubmit,
   }, ref) {
     const stageRef = useRef<HTMLElement | null>(null);
+    const chatShellRef = useRef<HTMLDivElement | null>(null);
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const runtimeRef = useRef<KanshanRuntimeBridge | null>(null);
     const playbackModeRef = useRef<'semantic' | 'raw'>('semantic');
     const dialogueTimerRef = useRef<number | null>(null);
+    const stageHoverGraceTimerRef = useRef<number | null>(null);
+    const dialogueHoverGraceTimerRef = useRef<number | null>(null);
     const desktopWindowDragRef = useRef<DesktopWindowDragState | null>(null);
     const desktopWindowApiRef = useRef<TauriWindowApi | null>(null);
     const desktopCoreApiRef = useRef<TauriCoreApi | null>(null);
@@ -303,12 +329,39 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
       dialogueTimerRef.current = null;
     };
 
+    const clearStageHoverGraceTimer = () => {
+      if (stageHoverGraceTimerRef.current === null) return;
+      window.clearTimeout(stageHoverGraceTimerRef.current);
+      stageHoverGraceTimerRef.current = null;
+    };
+
+    const clearDialogueHoverGraceTimer = () => {
+      if (dialogueHoverGraceTimerRef.current === null) return;
+      window.clearTimeout(dialogueHoverGraceTimerRef.current);
+      dialogueHoverGraceTimerRef.current = null;
+    };
+
+    const handleDialogueHoverChange = (hovered: boolean) => {
+      clearDialogueHoverGraceTimer();
+      if (hovered) {
+        setIsDialogueHovered(true);
+        return;
+      }
+      dialogueHoverGraceTimerRef.current = window.setTimeout(() => {
+        setIsDialogueHovered(false);
+        dialogueHoverGraceTimerRef.current = null;
+      }, INTERACTION_GRACE_MS);
+    };
+
     useImperativeHandle(ref, () => ({
       playRawClip(clipName: string) {
         playbackModeRef.current = 'raw';
         runtimeRef.current?.send({ type: 'playClip', clipName, loop: true });
       },
     }), []);
+
+    useEffect(() => clearStageHoverGraceTimer, []);
+    useEffect(() => clearDialogueHoverGraceTimer, []);
 
     useEffect(() => {
       if (desktopMode) return;
@@ -515,23 +568,38 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
         return;
       }
 
-      const nextPages = paginateDialogueByHeight(chatDialogueText, CHAT_DIALOGUE_MAX_HEIGHT);
-      setChatDialoguePages(nextPages);
-      setChatDialoguePageIndex(Math.max(0, nextPages.length - 1));
-    }, [chatDialogueText]);
+      const repaginate = () => {
+        const nextPages = paginateDialogueByHeight(
+          chatDialogueText,
+          chatShellRef.current,
+          CHAT_DIALOGUE_VISIBLE_LINES,
+        );
+        setChatDialoguePages(nextPages);
+        setChatDialoguePageIndex(Math.max(0, nextPages.length - 1));
+      };
+
+      repaginate();
+
+      const shell = chatShellRef.current;
+      if (!shell || typeof ResizeObserver === 'undefined') return;
+
+      let lastWidth = shell.getBoundingClientRect().width;
+      const observer = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (!entry) return;
+        const nextWidth = entry.contentRect.width;
+        if (Math.abs(nextWidth - lastWidth) < 0.5) return;
+        lastWidth = nextWidth;
+        repaginate();
+      });
+      observer.observe(shell);
+      return () => observer.disconnect();
+    }, [chatDialogueText, bubbleMode]);
 
     useEffect(() => {
       if (bubbleMode === 'chat') return;
       setChatDialoguePageIndex(0);
     }, [bubbleMode]);
-
-    const chatStatusText = chatError
-      ? chatError
-      : isDialogueStreaming
-        ? '看山正在回复…'
-        : lastUserMessage
-          ? `上一句：${lastUserMessage}`
-          : '按 Enter 发送，Shift+Enter 换行';
 
     const handleStageDragStart = (event: React.PointerEvent<HTMLElement>) => {
       if (!isCanvasDragTarget(event.target)) return;
@@ -797,9 +865,16 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
         onPointerMove={handleStageDragMove}
         onPointerUp={handleStageDragEnd}
         onPointerCancel={handleStageDragEnd}
-        onPointerEnter={() => setIsStageHovered(true)}
+        onPointerEnter={() => {
+          clearStageHoverGraceTimer();
+          setIsStageHovered(true);
+        }}
         onPointerLeave={() => {
-          setIsStageHovered(false);
+          clearStageHoverGraceTimer();
+          stageHoverGraceTimerRef.current = window.setTimeout(() => {
+            setIsStageHovered(false);
+            stageHoverGraceTimerRef.current = null;
+          }, INTERACTION_GRACE_MS);
         }}
       >
         <span className="stage-ground-shadow" aria-hidden="true" />
@@ -813,16 +888,15 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
           bubbleMode={bubbleMode}
           chatDialoguePageIndex={chatDialoguePageIndex}
           chatDialoguePages={chatDialoguePages}
+          chatShellRef={chatShellRef}
           isDialogueStreaming={isDialogueStreaming}
-          onDialogueHoverChange={setIsDialogueHovered}
+          onDialogueHoverChange={handleDialogueHoverChange}
           onChatDialoguePageIndexChange={setChatDialoguePageIndex}
           snapEdge={snapEdge}
         />
         <KanshanHoverMenu
-          chatError={chatError}
           chatInput={chatInput}
           activeMenuItem={activeMenuItem}
-          chatStatusText={chatStatusText}
           isActive={isMenuActive}
           onChatFocusChange={setIsChatFocused}
           onMenuHoverChange={setIsMenuHovered}
@@ -868,6 +942,7 @@ interface BubbleDialogueProps {
   bubbleMode: BubbleMode;
   chatDialoguePageIndex: number;
   chatDialoguePages: string[];
+  chatShellRef: React.MutableRefObject<HTMLDivElement | null>;
   isDialogueStreaming: boolean;
   onChatDialoguePageIndexChange: React.Dispatch<React.SetStateAction<number>>;
   onDialogueHoverChange: (hovered: boolean) => void;
@@ -879,6 +954,7 @@ function BubbleDialogue({
   bubbleMode,
   chatDialoguePageIndex,
   chatDialoguePages,
+  chatShellRef,
   isDialogueStreaming,
   onChatDialoguePageIndexChange,
   onDialogueHoverChange,
@@ -888,6 +964,8 @@ function BubbleDialogue({
   const resolvedDialogueText = bubbleMode === 'chat'
     ? (chatDialoguePages[chatDialoguePageIndex] ?? chatDialoguePages.at(-1) ?? '')
     : actionDialogueText;
+  const displayedChatDialogueText = resolvedDialogueText
+    || (isDialogueStreaming ? '看山正在回复…' : CHAT_DIALOGUE_EMPTY_TEXT);
   const canPageUp = hasTrimmedDialogue && chatDialoguePageIndex > 0;
   const canPageDown = hasTrimmedDialogue && chatDialoguePageIndex < chatDialoguePages.length - 1;
 
@@ -902,13 +980,11 @@ function BubbleDialogue({
       onPointerLeave={() => onDialogueHoverChange(false)}
     >
       {isChatBubble ? (
-        <div className="pet-dialogue-chat-shell">
-          {resolvedDialogueText ? (
-            <span className="pet-dialogue-content pet-dialogue-content--chat">
-              {resolvedDialogueText}
-              {isDialogueStreaming && !canPageDown ? <i className="pet-dialogue-caret" aria-hidden="true">▍</i> : null}
-            </span>
-          ) : null}
+        <div className="pet-dialogue-chat-shell" ref={chatShellRef}>
+          <span className={`pet-dialogue-content pet-dialogue-content--chat${resolvedDialogueText ? '' : ' is-empty'}`}>
+            {displayedChatDialogueText}
+            {isDialogueStreaming && !canPageDown ? <i className="pet-dialogue-caret" aria-hidden="true">▍</i> : null}
+          </span>
           {hasTrimmedDialogue ? (
             <div className="pet-dialogue-pager">
               <button type="button" disabled={!canPageUp} onClick={() => onChatDialoguePageIndexChange((current: number) => Math.max(0, current - 1))}>↑</button>
@@ -927,9 +1003,7 @@ function BubbleDialogue({
 
 interface KanshanHoverMenuProps {
   activeMenuItem: 'pat' | 'props' | 'tasks' | 'chat' | null;
-  chatError: string;
   chatInput: string;
-  chatStatusText: string;
   isActive: boolean;
   isDialogueStreaming: boolean;
   openPanel: 'props' | 'tasks' | 'chat' | null;
@@ -953,9 +1027,7 @@ interface KanshanHoverMenuProps {
 
 function KanshanHoverMenu({
   activeMenuItem,
-  chatError,
   chatInput,
-  chatStatusText,
   isActive,
   isDialogueStreaming,
   openPanel,
@@ -1017,6 +1089,19 @@ function KanshanHoverMenu({
     onOpenPanelChange(null);
   };
 
+  const handleZhidaLinkClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void (async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('kanshan_open_external_url', { url: ZHIDA_AI_URL });
+      } catch {
+        window.open(ZHIDA_AI_URL, '_blank', 'noopener,noreferrer');
+      }
+    })();
+  };
+
   const closeMenuForPointerLeave = () => {
     onMenuHoverChange(false);
     clearCloseMenuTimer();
@@ -1025,7 +1110,7 @@ function KanshanHoverMenu({
       onActiveMenuItemChange(null);
       onOpenPanelChange(null);
       closeMenuTimerRef.current = null;
-    }, 180);
+    }, INTERACTION_GRACE_MS);
   };
 
   return (
@@ -1116,7 +1201,15 @@ function KanshanHoverMenu({
               onKeyDown={onChatInputKeyDown}
             />
             <div className="pet-chat-footer">
-              <span className={`pet-chat-status${chatError ? ' is-error' : ''}`}>{chatStatusText}</span>
+              <a
+                className="pet-chat-status pet-chat-link"
+                href={ZHIDA_AI_URL}
+                rel="noreferrer"
+                target="_blank"
+                onClick={handleZhidaLinkClick}
+              >
+                去知乎直答
+              </a>
               <button className="pet-chat-submit" type="button" disabled={isDialogueStreaming || chatInput.trim().length === 0} onClick={onChatSubmit}>
                 {isDialogueStreaming ? '回复中' : '发送'}
               </button>
