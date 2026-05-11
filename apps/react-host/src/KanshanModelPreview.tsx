@@ -762,8 +762,14 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
             if (edge === 'top') targetY = workTop - drag.stageViewportTop * drag.scale;
             if (edge === 'bottom') targetY = workBottom - stageSize - drag.stageViewportTop * drag.scale;
 
-            targetX = Math.min(Math.max(targetX, workLeft), workRight - size.width);
-            targetY = Math.min(Math.max(targetY, workTop), workBottom - size.height);
+            const stageViewportLeftPhysical = drag.stageViewportLeft * drag.scale;
+            const stageViewportTopPhysical = drag.stageViewportTop * drag.scale;
+            const minWindowXForStage = workLeft - stageViewportLeftPhysical;
+            const maxWindowXForStage = workRight - stageSize - stageViewportLeftPhysical;
+            const minWindowYForStage = workTop - stageViewportTopPhysical;
+            const maxWindowYForStage = workBottom - stageSize - stageViewportTopPhysical;
+            targetX = Math.min(Math.max(targetX, minWindowXForStage), maxWindowXForStage);
+            targetY = Math.min(Math.max(targetY, minWindowYForStage), maxWindowYForStage);
 
             const nextStageViewportLeft = edge === 'left'
               ? 0

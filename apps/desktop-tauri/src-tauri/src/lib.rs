@@ -195,21 +195,8 @@ fn configure_main_window(window: &WebviewWindow) {
 }
 
 fn create_tray_icon() -> Image<'static> {
-    const SIZE: u32 = 18;
-    let mut rgba = Vec::with_capacity((SIZE * SIZE * 4) as usize);
-    let center = (SIZE as f32 - 1.0) / 2.0;
-
-    for y in 0..SIZE {
-        for x in 0..SIZE {
-            let dx = x as f32 - center;
-            let dy = y as f32 - center;
-            let distance = (dx * dx + dy * dy).sqrt();
-            let alpha = if distance <= 8.0 { 255 } else { 0 };
-            rgba.extend_from_slice(&[247, 210, 145, alpha]);
-        }
-    }
-
-    Image::new_owned(rgba, SIZE, SIZE)
+    Image::from_bytes(include_bytes!("../icons/menubar-icon.png"))
+        .expect("failed to load bundled menu bar icon")
 }
 
 fn spawn_cursor_passthrough_loop(window: WebviewWindow) {
