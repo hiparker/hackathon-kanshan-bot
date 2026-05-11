@@ -1,6 +1,6 @@
 [package]
 name = "kanshan-desktop"
-version = "0.1.0"
+version = "1.0.0"
 description = "Liu Kanshan desktop companion"
 authors = ["Zhihu"]
 edition = "2021"

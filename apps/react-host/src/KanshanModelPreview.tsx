@@ -23,9 +23,12 @@ type DialoguePlacement = PetMenuPlacement;
 type BubbleMode = 'action' | 'chat';
 type TauriWindowApi = typeof import('@tauri-apps/api/window');
 type TauriCoreApi = typeof import('@tauri-apps/api/core');
+type DesktopMonitorInfo = Awaited<ReturnType<TauriWindowApi['availableMonitors']>>[number];
+type DesktopMonitorWorkArea = DesktopMonitorInfo['workArea'];
 type DesktopWindowDragState = {
   appWindow: ReturnType<TauriWindowApi['getCurrentWindow']>;
   coreApi: TauriCoreApi;
+  monitors: DesktopMonitorInfo[];
   pointerId: number;
   scale: number;
   stagePointerX: number;
@@ -154,6 +157,35 @@ function resolveDesktopSnapEdge(distances: Pick<Record<PetSnapEdge, number>, 'le
   ];
 
   return edgeDistances.sort((a, b) => a[1] - b[1])[0]?.[0] ?? 'right';
+}
+
+function resolveWorkAreaForPoint(monitors: DesktopMonitorInfo[], x: number, y: number): DesktopMonitorWorkArea | null {
+  const containingMonitor = monitors.find((monitor) => {
+    const { position, size } = monitor.workArea;
+    return x >= position.x
+      && x <= position.x + size.width
+      && y >= position.y
+      && y <= position.y + size.height;
+  });
+  if (containingMonitor) return containingMonitor.workArea;
+
+  const nearestMonitor = monitors
+    .map((monitor) => {
+      const { position, size } = monitor.workArea;
+      const left = position.x;
+      const top = position.y;
+      const right = left + size.width;
+      const bottom = top + size.height;
+      const clampedX = Math.min(Math.max(x, left), right);
+      const clampedY = Math.min(Math.max(y, top), bottom);
+      return {
+        distance: Math.hypot(x - clampedX, y - clampedY),
+        workArea: monitor.workArea,
+      };
+    })
+    .sort((a, b) => a.distance - b.distance)[0];
+
+  return nearestMonitor?.workArea ?? null;
 }
 
 function isCanvasDragTarget(target: EventTarget | null): boolean {
@@ -413,6 +445,92 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
       if (!desktopMode) return;
       let cancelled = false;
 
+      const recoverDesktopWindowIntoView = async () => {
+        const stage = stageRef.current;
+        if (!stage) return;
+
+        try {
+          const windowApi = desktopWindowApiRef.current ?? (await import('@tauri-apps/api/window'));
+          if (cancelled) return;
+          desktopWindowApiRef.current = windowApi;
+
+          const appWindow = windowApi.getCurrentWindow();
+          const [scale, monitors, position] = await Promise.all([
+            appWindow.scaleFactor(),
+            windowApi.availableMonitors(),
+            appWindow.outerPosition(),
+          ]);
+          if (cancelled) return;
+
+          const stageRect = stage.getBoundingClientRect();
+          const stageSize = STAGE_SIZE * scale;
+          const stageViewportLeftPhysical = stageRect.left * scale;
+          const stageViewportTopPhysical = stageRect.top * scale;
+          const stageCenterX = position.x + stageViewportLeftPhysical + stageSize / 2;
+          const stageCenterY = position.y + stageViewportTopPhysical + stageSize / 2;
+          const workArea = resolveWorkAreaForPoint(monitors, stageCenterX, stageCenterY);
+          if (!workArea) return;
+
+          const workLeft = workArea.position.x;
+          const workTop = workArea.position.y;
+          const workRight = workLeft + workArea.size.width;
+          const workBottom = workTop + workArea.size.height;
+          const nextX = Math.min(
+            Math.max(position.x, workLeft - stageViewportLeftPhysical),
+            workRight - stageSize - stageViewportLeftPhysical,
+          );
+          const nextY = Math.min(
+            Math.max(position.y, workTop - stageViewportTopPhysical),
+            workBottom - stageSize - stageViewportTopPhysical,
+          );
+
+          if (Math.abs(nextX - position.x) > 1 || Math.abs(nextY - position.y) > 1) {
+            await appWindow.setPosition(new windowApi.PhysicalPosition(Math.round(nextX), Math.round(nextY)));
+          }
+        } catch (error) {
+          console.warn('[kanshan] failed to recover desktop window position', error);
+        }
+      };
+
+      const timeoutId = window.setTimeout(() => void recoverDesktopWindowIntoView(), 120);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timeoutId);
+      };
+    }, [desktopMode]);
+
+    useEffect(() => {
+      if (!desktopMode) return;
+      const releaseDrag = () => {
+        if (!desktopWindowDragRef.current) return;
+        desktopWindowDragRef.current = null;
+        setIsStageDragging(false);
+        const coreApiPromise = desktopCoreApiRef.current
+          ? Promise.resolve(desktopCoreApiRef.current)
+          : import('@tauri-apps/api/core');
+        void coreApiPromise
+          .then((coreApi) => {
+            desktopCoreApiRef.current = coreApi;
+            return coreApi.invoke('kanshan_end_window_drag');
+          })
+          .catch(() => {
+            /* ignore */
+          });
+      };
+      window.addEventListener('pointerup', releaseDrag);
+      window.addEventListener('pointercancel', releaseDrag);
+      window.addEventListener('blur', releaseDrag);
+      return () => {
+        window.removeEventListener('pointerup', releaseDrag);
+        window.removeEventListener('pointercancel', releaseDrag);
+        window.removeEventListener('blur', releaseDrag);
+      };
+    }, [desktopMode]);
+
+    useEffect(() => {
+      if (!desktopMode) return;
+      let cancelled = false;
+
       const syncInteractiveRegions = async () => {
         const stage = stageRef.current;
         if (!stage) return;
@@ -610,16 +728,6 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
           return;
         }
 
-        void (async () => {
-          try {
-            const coreApi = desktopCoreApiRef.current ?? (await import('@tauri-apps/api/core'));
-            desktopCoreApiRef.current = coreApi;
-            await coreApi.invoke('kanshan_set_passthrough_suppressed', { suppress: true });
-          } catch (error) {
-            console.warn('[kanshan] kanshan_set_passthrough_suppressed', error);
-          }
-        })();
-
         event.preventDefault();
         event.stopPropagation();
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -634,24 +742,30 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
             desktopWindowApiRef.current = windowApi;
             desktopCoreApiRef.current = coreApi;
             const appWindow = windowApi.getCurrentWindow();
+            const [scale, monitors] = await Promise.all([
+              appWindow.scaleFactor(),
+              windowApi.availableMonitors(),
+            ]);
             desktopWindowDragRef.current = {
               appWindow,
               coreApi,
+              monitors,
               pointerId: event.pointerId,
-              scale: await appWindow.scaleFactor(),
+              scale,
               stagePointerX: event.clientX - stageRect.left,
               stagePointerY: event.clientY - stageRect.top,
               stageViewportLeft: stageRect.left,
               stageViewportTop: stageRect.top,
               windowApi,
             };
+            await coreApi.invoke('kanshan_begin_window_drag');
           } catch (error) {
             desktopWindowDragRef.current = null;
             setIsStageDragging(false);
             try {
               const coreApi = desktopCoreApiRef.current ?? (await import('@tauri-apps/api/core'));
               desktopCoreApiRef.current = coreApi;
-              await coreApi.invoke('kanshan_set_passthrough_suppressed', { suppress: false });
+              await coreApi.invoke('kanshan_end_window_drag');
             } catch {
               /* ignore */
             }
@@ -673,13 +787,8 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
 
     const handleStageDragMove = (event: React.PointerEvent<HTMLElement>) => {
       if (desktopMode) {
-        const drag = desktopWindowDragRef.current;
-        if (!drag) return;
-
+        if (!desktopWindowDragRef.current) return;
         event.preventDefault();
-        const nextX = (event.screenX - drag.stagePointerX - drag.stageViewportLeft) * drag.scale;
-        const nextY = (event.screenY - drag.stagePointerY - drag.stageViewportTop) * drag.scale;
-        void drag.appWindow.setPosition(new drag.windowApi.PhysicalPosition(Math.round(nextX), Math.round(nextY)));
         return;
       }
 
@@ -698,7 +807,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
           try {
             const coreApi = desktopCoreApiRef.current ?? (await import('@tauri-apps/api/core'));
             desktopCoreApiRef.current = coreApi;
-            await coreApi.invoke('kanshan_set_passthrough_suppressed', { suppress: false });
+            await coreApi.invoke('kanshan_end_window_drag');
           } catch {
             /* ignore */
           }
@@ -717,19 +826,20 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
 
         void (async () => {
           try {
-            const [position, size, monitor] = await Promise.all([
+            const [position, monitors] = await Promise.all([
               drag.appWindow.outerPosition(),
-              drag.appWindow.outerSize(),
-              drag.windowApi.currentMonitor(),
+              drag.windowApi.availableMonitors(),
             ]);
-            const workArea = monitor?.workArea;
-            if (!workArea) return;
-
+            const stageSize = STAGE_SIZE * drag.scale;
             const stageLeft = position.x + drag.stageViewportLeft * drag.scale;
             const stageTop = position.y + drag.stageViewportTop * drag.scale;
-            const stageSize = STAGE_SIZE * drag.scale;
             const stageRight = stageLeft + stageSize;
             const stageBottom = stageTop + stageSize;
+            const stageCenterX = stageLeft + stageSize / 2;
+            const stageCenterY = stageTop + stageSize / 2;
+            const workArea = resolveWorkAreaForPoint(monitors, stageCenterX, stageCenterY);
+            if (!workArea) return;
+
             const workLeft = workArea.position.x;
             const workTop = workArea.position.y;
             const workRight = workLeft + workArea.size.width;
@@ -749,7 +859,6 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
               'bottom-right': Math.hypot(distRight, distBottom),
             };
             const edge = resolveDesktopSnapEdge(distances);
-            const stageCenterX = stageLeft + stageSize / 2;
             const nextMenuPlacement: PetMenuPlacement = stageCenterX > workLeft + workArea.size.width / 2 ? 'left' : 'right';
 
             setSnapEdge(edge);
