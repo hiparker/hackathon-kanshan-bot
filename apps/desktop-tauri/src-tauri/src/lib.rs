@@ -21,8 +21,8 @@ struct DragState(Mutex<DragInner>);
 
 struct DragInner {
     snap_edge: &'static str,
-    stage_x: f64,
-    stage_y: f64,
+    stage_x_logical: f64,
+    stage_y_logical: f64,
     interactive_regions: Vec<InteractiveRegion>,
     /// When true, never ignore cursor events (e.g. during window drag).
     passthrough_suppressed: bool,
@@ -48,8 +48,8 @@ impl Default for DragInner {
     fn default() -> Self {
         Self {
             snap_edge: "right",
-            stage_x: DESKTOP_WINDOW_WIDTH - DESKTOP_STAGE_SIZE,
-            stage_y: (DESKTOP_WINDOW_HEIGHT - DESKTOP_STAGE_SIZE) / 2.0,
+            stage_x_logical: DESKTOP_WINDOW_WIDTH - DESKTOP_STAGE_SIZE,
+            stage_y_logical: (DESKTOP_WINDOW_HEIGHT - DESKTOP_STAGE_SIZE) / 2.0,
             interactive_regions: Vec::new(),
             passthrough_suppressed: false,
             follow: DragFollow::default(),
@@ -138,8 +138,8 @@ fn kanshan_set_snap_edge(window: WebviewWindow, edge: String) {
 fn kanshan_set_stage_position(window: WebviewWindow, x: f64, y: f64) {
     if let Some(state) = window.try_state::<DragState>() {
         let mut inner = state.0.lock().unwrap();
-        inner.stage_x = x;
-        inner.stage_y = y;
+        inner.stage_x_logical = x;
+        inner.stage_y_logical = y;
     }
 }
 
@@ -281,24 +281,26 @@ fn spawn_cursor_passthrough_loop(window: WebviewWindow) {
             let in_window =
                 local_x >= 0.0 && local_x <= width && local_y >= 0.0 && local_y <= height;
 
-            let (stage_x, stage_y, interactive_regions, passthrough_suppressed) = window
+            let (stage_x_logical, stage_y_logical, interactive_regions, passthrough_suppressed) = window
                 .try_state::<DragState>()
                 .map(|state| {
                     let inner = state.0.lock().unwrap();
                     (
-                        inner.stage_x,
-                        inner.stage_y,
+                        inner.stage_x_logical,
+                        inner.stage_y_logical,
                         inner.interactive_regions.clone(),
                         inner.passthrough_suppressed,
                     )
                 })
                 .unwrap_or((
-                    width - DESKTOP_STAGE_SIZE * scale,
-                    (height - DESKTOP_STAGE_SIZE * scale) / 2.0,
+                    width / scale - DESKTOP_STAGE_SIZE,
+                    (height / scale - DESKTOP_STAGE_SIZE) / 2.0,
                     Vec::new(),
                     false,
                 ));
             let stage_size = DESKTOP_STAGE_SIZE * scale;
+            let stage_x = stage_x_logical * scale;
+            let stage_y = stage_y_logical * scale;
             let in_stage = local_x >= stage_x
                 && local_x <= stage_x + stage_size
                 && local_y >= stage_y
@@ -330,9 +332,9 @@ fn spawn_drag_follow_loop(window: WebviewWindow) {
             let Some(state) = window.try_state::<DragState>() else {
                 continue;
             };
-            let (follow, stage_x, stage_y) = {
+            let (follow, stage_x_logical, stage_y_logical) = {
                 let inner = state.0.lock().unwrap();
-                (inner.follow, inner.stage_x, inner.stage_y)
+                (inner.follow, inner.stage_x_logical, inner.stage_y_logical)
             };
             if !follow.active {
                 continue;
@@ -346,6 +348,8 @@ fn spawn_drag_follow_loop(window: WebviewWindow) {
             };
             let scale = window.scale_factor().unwrap_or(1.0);
             let stage_size = DESKTOP_STAGE_SIZE * scale;
+            let stage_x = stage_x_logical * scale;
+            let stage_y = stage_y_logical * scale;
 
             let mut target_x = cursor.x - follow.cursor_offset_x;
             let mut target_y = cursor.y - follow.cursor_offset_y;
@@ -429,14 +433,16 @@ fn clamp_window_into_screen(window: &WebviewWindow) {
         return;
     };
     let scale = window.scale_factor().unwrap_or(1.0);
-    let (stage_x, stage_y) = window
+    let (stage_x_logical, stage_y_logical) = window
         .try_state::<DragState>()
         .map(|state| {
             let inner = state.0.lock().unwrap();
-            (inner.stage_x, inner.stage_y)
+            (inner.stage_x_logical, inner.stage_y_logical)
         })
         .unwrap_or((0.0, 0.0));
     let stage_size = DESKTOP_STAGE_SIZE * scale;
+    let stage_x = stage_x_logical * scale;
+    let stage_y = stage_y_logical * scale;
 
     let mut x = position.x as f64;
     let mut y = position.y as f64;

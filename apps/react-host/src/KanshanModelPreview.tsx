@@ -547,8 +547,8 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
           const scale = await windowApi.getCurrentWindow().scaleFactor();
           const stageRect = stage.getBoundingClientRect();
           await coreApi.invoke('kanshan_set_stage_position', {
-            x: stageRect.left * scale,
-            y: stageRect.top * scale,
+            x: stageRect.left,
+            y: stageRect.top,
           });
 
           const selectors = [
@@ -893,8 +893,8 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
 
             await drag.coreApi.invoke('kanshan_set_snap_edge', { edge });
             await drag.coreApi.invoke('kanshan_set_stage_position', {
-              x: nextStageViewportLeft * drag.scale,
-              y: nextStageViewportTop * drag.scale,
+              x: nextStageViewportLeft,
+              y: nextStageViewportTop,
             });
 
             await drag.appWindow.setPosition(new drag.windowApi.PhysicalPosition(
