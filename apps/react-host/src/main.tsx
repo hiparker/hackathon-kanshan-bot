@@ -1,5 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import './styles.css';
 
@@ -8,7 +9,7 @@ function Root() {
     window.history.replaceState(null, '', '/debug');
   }
 
-  if (window.location.pathname !== '/debug') {
+  if (!window.location.pathname.startsWith('/debug')) {
     return (
       <main className="route-placeholder">
         <h1>页面不存在</h1>
@@ -18,7 +19,11 @@ function Root() {
     );
   }
 
-  return <App />;
+  return (
+    <BrowserRouter basename="/debug">
+      <App />
+    </BrowserRouter>
+  );
 }
 
 createRoot(document.getElementById('root') as HTMLElement).render(
