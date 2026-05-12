@@ -2,6 +2,9 @@ package impl
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,7 +26,10 @@ const (
 	defaultIndexURL       = "https://hq.sinajs.cn/list=s_sh000001,s_sz399001,int_nasdaq,int_hangseng"
 	defaultDailyNewsURL   = "https://orz.ai/api/v1/dailynews/?platform=tenxunwang"
 	defaultHotNewsURL     = "https://api.tcslw.cn/api/hotlist/eastmoney?type=102"
+	defaultZhihuHotURL    = "https://openapi.zhihu.com/openapi/billboard/list"
 	defaultWeatherCity    = "Beijing"
+	defaultZhihuTopCount  = 50
+	defaultZhihuHotHours  = 48
 )
 
 type marketService struct {
@@ -35,6 +41,12 @@ type marketService struct {
 	indexURL       string
 	dailyNewsURL   string
 	hotNewsURL     string
+	zhihuHotURL    string
+	zhihuAppKey    string
+	zhihuAppSecret string
+	zhihuExtraInfo string
+	zhihuTopCount  int
+	zhihuHotHours  int
 }
 
 type marketServiceConfig struct {
@@ -46,6 +58,12 @@ type marketServiceConfig struct {
 	IndexURL       string
 	DailyNewsURL   string
 	HotNewsURL     string
+	ZhihuHotURL    string
+	ZhihuAppKey    string
+	ZhihuAppSecret string
+	ZhihuExtraInfo string
+	ZhihuTopCount  int
+	ZhihuHotHours  int
 }
 
 // NewMarketService returns a websocket snapshot service backed by public quote APIs.
@@ -58,6 +76,12 @@ func NewMarketService() service.MarketService {
 		IndexURL:       envOrDefault("MARKET_INDEX_URL", defaultIndexURL),
 		DailyNewsURL:   envOrDefault("MARKET_DAILY_NEWS_URL", defaultDailyNewsURL),
 		HotNewsURL:     envOrDefault("MARKET_HOT_NEWS_URL", defaultHotNewsURL),
+		ZhihuHotURL:    envOrDefault("MARKET_ZHIHU_HOT_URL", defaultZhihuHotURL),
+		ZhihuAppKey:    strings.TrimSpace(os.Getenv("MARKET_ZHIHU_HOT_APP_KEY")),
+		ZhihuAppSecret: strings.TrimSpace(os.Getenv("MARKET_ZHIHU_HOT_APP_SECRET")),
+		ZhihuExtraInfo: strings.TrimSpace(os.Getenv("MARKET_ZHIHU_HOT_EXTRA_INFO")),
+		ZhihuTopCount:  intEnvOrDefault("MARKET_ZHIHU_HOT_TOP_CNT", defaultZhihuTopCount),
+		ZhihuHotHours:  intEnvOrDefault("MARKET_ZHIHU_HOT_PUBLISH_IN_HOURS", defaultZhihuHotHours),
 	})
 }
 
@@ -87,6 +111,15 @@ func newMarketService(cfg marketServiceConfig) service.MarketService {
 	if strings.TrimSpace(cfg.HotNewsURL) == "" {
 		cfg.HotNewsURL = defaultHotNewsURL
 	}
+	if strings.TrimSpace(cfg.ZhihuHotURL) == "" {
+		cfg.ZhihuHotURL = defaultZhihuHotURL
+	}
+	if cfg.ZhihuTopCount <= 0 {
+		cfg.ZhihuTopCount = defaultZhihuTopCount
+	}
+	if cfg.ZhihuHotHours <= 0 {
+		cfg.ZhihuHotHours = defaultZhihuHotHours
+	}
 	return &marketService{
 		httpClient:     client,
 		weatherCity:    cfg.WeatherCity,
@@ -96,6 +129,12 @@ func newMarketService(cfg marketServiceConfig) service.MarketService {
 		indexURL:       cfg.IndexURL,
 		dailyNewsURL:   cfg.DailyNewsURL,
 		hotNewsURL:     cfg.HotNewsURL,
+		zhihuHotURL:    cfg.ZhihuHotURL,
+		zhihuAppKey:    cfg.ZhihuAppKey,
+		zhihuAppSecret: cfg.ZhihuAppSecret,
+		zhihuExtraInfo: cfg.ZhihuExtraInfo,
+		zhihuTopCount:  cfg.ZhihuTopCount,
+		zhihuHotHours:  cfg.ZhihuHotHours,
 	}
 }
 
@@ -103,7 +142,7 @@ func (s *marketService) Snapshot(ctx context.Context) (service.MarketSnapshot, e
 	out := service.MarketSnapshot{
 		GeneratedAt: time.Now().Unix(),
 		Quotes:      make([]service.MarketQuote, 0, 7),
-		News:        make([]service.MarketNews, 0, 6),
+		News:        make([]service.MarketNews, 0, 9),
 	}
 
 	type result struct {
@@ -374,7 +413,7 @@ func parseKrakenQuotes(body []byte) ([]service.MarketQuote, error) {
 		return nil, err
 	}
 	if len(payload.Error) > 0 {
-		return nil, fmt.Errorf(strings.Join(payload.Error, "; "))
+		return nil, fmt.Errorf("%s", strings.Join(payload.Error, "; "))
 	}
 	if len(payload.Result) == 0 {
 		return nil, fmt.Errorf("empty kraken payload")
@@ -519,14 +558,17 @@ func (s *marketService) fetchIndexQuotes(ctx context.Context) ([]service.MarketQ
 }
 
 func (s *marketService) fetchNews(ctx context.Context) ([]service.MarketNews, error) {
-	news := make([]service.MarketNews, 0, 6)
-	seen := make(map[string]struct{}, 6)
+	news := make([]service.MarketNews, 0, 9)
+	seen := make(map[string]struct{}, 9)
 
 	if items, err := s.fetchDailyNews(ctx); err == nil {
 		news = appendUniqueNews(news, items, 3, seen)
 	}
 	if items, err := s.fetchHotNews(ctx); err == nil {
 		news = appendUniqueNews(news, items, 6, seen)
+	}
+	if items, err := s.fetchZhihuHotNews(ctx); err == nil {
+		news = appendUniqueNews(news, items, 9, seen)
 	}
 	if len(news) == 0 {
 		return nil, fmt.Errorf("empty news payload")
@@ -644,6 +686,110 @@ func (s *marketService) fetchHotNews(ctx context.Context) ([]service.MarketNews,
 	}
 	if len(out) == 0 {
 		return nil, fmt.Errorf("no valid hot news items")
+	}
+	return out, nil
+}
+
+func (s *marketService) fetchZhihuHotNews(ctx context.Context) ([]service.MarketNews, error) {
+	if strings.TrimSpace(s.zhihuHotURL) == "" {
+		return nil, fmt.Errorf("zhihu hot url not configured")
+	}
+	if s.zhihuAppKey == "" || s.zhihuAppSecret == "" {
+		return nil, fmt.Errorf("zhihu hot credentials not configured")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.zhihuHotURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	query := req.URL.Query()
+	query.Set("top_cnt", strconv.Itoa(s.zhihuTopCount))
+	query.Set("publish_in_hours", strconv.Itoa(s.zhihuHotHours))
+	req.URL.RawQuery = query.Encode()
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "kanshan-server/market-feed")
+
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	logID := fmt.Sprintf("log_%d", time.Now().UnixNano())
+	signature := buildZhihuHotSignature(s.zhihuAppKey, timestamp, logID, s.zhihuExtraInfo, s.zhihuAppSecret)
+	req.Header.Set("X-App-Key", s.zhihuAppKey)
+	req.Header.Set("X-Timestamp", timestamp)
+	req.Header.Set("X-Log-Id", logID)
+	req.Header.Set("X-Extra-Info", s.zhihuExtraInfo)
+	req.Header.Set("X-Sign", signature)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		return nil, fmt.Errorf("status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return parseZhihuHotPayload(body)
+}
+
+func buildZhihuHotSignature(appKey, timestamp, logID, extraInfo, appSecret string) string {
+	signString := fmt.Sprintf("app_key:%s|ts:%s|logid:%s|extra_info:%s", appKey, timestamp, logID, extraInfo)
+	mac := hmac.New(sha256.New, []byte(appSecret))
+	_, _ = mac.Write([]byte(signString))
+	return base64.StdEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func parseZhihuHotPayload(body []byte) ([]service.MarketNews, error) {
+	var payload struct {
+		Status int    `json:"status"`
+		Msg    string `json:"msg"`
+		Data   struct {
+			List []struct {
+				Title            string `json:"title"`
+				Body             string `json:"body"`
+				LinkURL          string `json:"link_url"`
+				PublishedTime    int64  `json:"published_time"`
+				PublishedTimeStr string `json:"published_time_str"`
+				Type             string `json:"type"`
+			} `json:"list"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	if payload.Status != 0 {
+		return nil, fmt.Errorf("zhihu hot status %d: %s", payload.Status, payload.Msg)
+	}
+	if len(payload.Data.List) == 0 {
+		return nil, fmt.Errorf("empty zhihu hot payload")
+	}
+
+	out := make([]service.MarketNews, 0, minInt(len(payload.Data.List), 3))
+	for _, item := range payload.Data.List {
+		title := strings.TrimSpace(item.Title)
+		if title == "" {
+			continue
+		}
+		publishedAt := strings.TrimSpace(item.PublishedTimeStr)
+		if publishedAt == "" && item.PublishedTime > 0 {
+			publishedAt = time.Unix(item.PublishedTime, 0).Format(time.DateTime)
+		}
+		out = append(out, service.MarketNews{
+			Source:      "zhihu-hot",
+			Category:    emptyAs(strings.ToLower(strings.TrimSpace(item.Type)), "hotlist"),
+			Title:       title,
+			Summary:     trimSummary(item.Body, 96),
+			URL:         strings.TrimSpace(item.LinkURL),
+			PublishedAt: publishedAt,
+		})
+		if len(out) == 3 {
+			break
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no valid zhihu hot items")
 	}
 	return out, nil
 }
@@ -809,4 +955,16 @@ func envOrDefault(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func intEnvOrDefault(key string, fallback int) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }

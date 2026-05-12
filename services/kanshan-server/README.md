@@ -138,6 +138,12 @@ basic/dao/impl    → db（仅为读 embed.FS）
 | `MARKET_INDEX_URL` | `新浪指数行情 URL` | 可选覆盖上证/深证/NASDAQ/恒生公开源 |
 | `MARKET_DAILY_NEWS_URL` | `https://orz.ai/api/v1/dailynews/?platform=tenxunwang` | 可选覆盖腾讯新闻源 |
 | `MARKET_HOT_NEWS_URL` | `https://api.tcslw.cn/api/hotlist/eastmoney?type=102` | 可选覆盖东方财富快讯源 |
+| `MARKET_ZHIHU_HOT_URL` | `https://openapi.zhihu.com/openapi/billboard/list` | 知乎社区真实讨论热榜接口完整 URL |
+| `MARKET_ZHIHU_HOT_APP_KEY` |  | 知乎热榜接口 `X-App-Key`，填用户 token，勿提交真实值 |
+| `MARKET_ZHIHU_HOT_APP_SECRET` |  | 知乎热榜接口签名密钥，勿提交真实值 |
+| `MARKET_ZHIHU_HOT_EXTRA_INFO` |  | 可选：知乎热榜接口 `X-Extra-Info` |
+| `MARKET_ZHIHU_HOT_TOP_CNT` | `50` | 知乎热榜拉取数量 |
+| `MARKET_ZHIHU_HOT_PUBLISH_IN_HOURS` | `48` | 知乎热榜发布时间范围（小时） |
 | `ZHIHU_OAUTH_*` |  | P0 不使用，P3 接入 OAuth2 时填 |
 
 ## 开发命令

@@ -59,6 +59,40 @@ interface ConnectKanshanMarketStreamOptions {
 
 const CONFIGURED_API_BASE_URL = import.meta.env.VITE_KANSHAN_API_BASE_URL || 'http://localhost:8787';
 const MAX_RECONNECT_DELAY_MS = 15000;
+const WEATHER_CITY_ZH_MAP: Record<string, string> = {
+  beijing: '北京',
+  shanghai: '上海',
+  shenzhen: '深圳',
+  guangzhou: '广州',
+  hangzhou: '杭州',
+  chengdu: '成都',
+  hongkong: '香港',
+  'hong kong': '香港',
+  tianjin: '天津',
+  chongqing: '重庆',
+  wuhan: '武汉',
+  nanjing: '南京',
+  suzhou: '苏州',
+  xian: '西安',
+  "xi'an": '西安',
+  xiamen: '厦门',
+};
+
+const WEATHER_CONDITION_ZH_RULES: Array<[RegExp, string]> = [
+  [/thunder/i, '雷暴'],
+  [/sleet/i, '雨夹雪'],
+  [/snow/i, '雪'],
+  [/drizzle/i, '毛毛雨'],
+  [/shower/i, '阵雨'],
+  [/rain/i, '雨'],
+  [/overcast/i, '阴'],
+  [/partly\s*cloud/i, '局部多云'],
+  [/cloud/i, '多云'],
+  [/\bclear\b/i, '晴'],
+  [/sunny/i, '晴'],
+  [/mist|fog|haze/i, '雾'],
+  [/wind/i, '有风'],
+];
 
 export function connectKanshanMarketStream(options: ConnectKanshanMarketStreamOptions): () => void {
   let socket: WebSocket | null = null;
@@ -165,7 +199,9 @@ export function buildKanshanMarketDialogueCandidates(snapshot: KanshanMarketSnap
 
   if (snapshot.weather) {
     const weather = snapshot.weather;
-    candidates.push({ text: `天气 ${weather.city}${weather.condition}${weather.temp_c}C` });
+    const city = localizeWeatherCity(weather.city);
+    const condition = localizeWeatherCondition(weather.condition);
+    candidates.push({ text: `天气 ${city} ${condition} ${weather.temp_c}C` });
   }
 
   const gold = findQuote(snapshot.quotes, 'gold');
@@ -223,4 +259,23 @@ function formatPrice(value: number): string {
     return value.toFixed(2);
   }
   return value.toFixed(2);
+}
+
+function localizeWeatherCity(city: string): string {
+  const trimmed = city.trim();
+  if (!trimmed) return '';
+  if (/[\u4e00-\u9fff]/.test(trimmed)) return trimmed;
+  return WEATHER_CITY_ZH_MAP[trimmed.toLowerCase()] ?? trimmed;
+}
+
+function localizeWeatherCondition(condition: string): string {
+  const trimmed = condition.trim();
+  if (!trimmed) return '';
+  if (/[\u4e00-\u9fff]/.test(trimmed)) return trimmed;
+  for (const [pattern, replacement] of WEATHER_CONDITION_ZH_RULES) {
+    if (pattern.test(trimmed)) {
+      return replacement;
+    }
+  }
+  return trimmed;
 }
