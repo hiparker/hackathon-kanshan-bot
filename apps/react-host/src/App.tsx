@@ -23,15 +23,23 @@ import {
 import { kanshanModelConfig } from './kanshanModelConfig';
 import { KanshanModelPreview, type KanshanModelPreviewHandle, type KanshanRewardToast } from './KanshanModelPreview';
 import { OverviewPage } from './pages/OverviewPage';
+import {
+  chooseKanshanMarketReactionAction,
+  pickKanshanMarketDialogueCandidate,
+  connectKanshanMarketStream,
+} from './kanshanMarketStream';
 import { streamChat } from './chatService';
 
 type MenuDataStatus = 'idle' | 'loading' | 'ready' | 'error';
 type RewardToast = KanshanRewardToast;
+type DialogueSource = 'chat' | 'market';
 
 const DEFAULT_STATE_POLL_MS = 10000;
 const TEMPORARY_ACTION_MIN_MS = 1800;
 const CHAT_TYPING_INTERVAL_MS = 80;
 const CHAT_TYPING_BATCH_SIZE = 2;
+const CHAT_MARKET_DIALOGUE_COOLDOWN_MS = 15000;
+const MARKET_DIALOGUE_VISIBLE_MS = 13000;
 const IS_DESKTOP_MODE = import.meta.env.MODE === 'desktop' || import.meta.env.VITE_KANSHAN_DESKTOP === 'true';
 
 function resolveActionHint(actionHint: string): PetAction | null {
@@ -64,11 +72,18 @@ export function App() {
   const [chatError, setChatError] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [lastUserMessage, setLastUserMessage] = useState('');
+  const [marketDialogueText, setMarketDialogueText] = useState('');
+  const [marketDialogueUrl, setMarketDialogueUrl] = useState<string | undefined>(undefined);
+  const [dialogueSource, setDialogueSource] = useState<DialogueSource>('market');
   const chatAbortControllerRef = useRef<AbortController | null>(null);
   const chatDisplayTimerRef = useRef<number | null>(null);
+  const marketDialogueTimerRef = useRef<number | null>(null);
   const pendingChatTextRef = useRef('');
   const visibleChatTextRef = useRef('');
   const isChatStreamDoneRef = useRef(false);
+  const isSendingRef = useRef(false);
+  const chatInputRef = useRef('');
+  const lastChatInteractionAtRef = useRef(0);
   const semanticClipRows = kanshanRawClipConfig.map((item) => ({
     semanticClipName: item.label,
     rawClipName: item.clipName,
@@ -89,6 +104,14 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    isSendingRef.current = isSending;
+  }, [isSending]);
+
+  useEffect(() => {
+    chatInputRef.current = chatInput;
+  }, [chatInput]);
+
   const clearTemporaryFallbackTimer = useCallback(() => {
     if (temporaryFallbackTimerRef.current === null) return;
 
@@ -108,6 +131,13 @@ export function App() {
 
     window.clearTimeout(chatDisplayTimerRef.current);
     chatDisplayTimerRef.current = null;
+  }, []);
+
+  const clearMarketDialogueTimer = useCallback(() => {
+    if (marketDialogueTimerRef.current === null) return;
+
+    window.clearTimeout(marketDialogueTimerRef.current);
+    marketDialogueTimerRef.current = null;
   }, []);
 
   const flushChatDisplay = useCallback(() => {
@@ -142,6 +172,19 @@ export function App() {
       flushChatDisplay();
     }
   }, [flushChatDisplay]);
+
+  const applyMarketDialogue = useCallback((nextText: string, nextUrl?: string) => {
+    if (!nextText.trim()) return;
+    clearMarketDialogueTimer();
+    setMarketDialogueText(nextText);
+    setMarketDialogueUrl(nextUrl);
+    setDialogueSource('market');
+    marketDialogueTimerRef.current = window.setTimeout(() => {
+      setMarketDialogueText('');
+      setMarketDialogueUrl(undefined);
+      marketDialogueTimerRef.current = null;
+    }, MARKET_DIALOGUE_VISIBLE_MS);
+  }, [clearMarketDialogueTimer]);
 
   const applyDefaultState = useCallback((nextDefaultState: KanshanDefaultState) => {
     isFollowingDefaultRef.current = true;
@@ -210,9 +253,10 @@ export function App() {
       chatAbortControllerRef.current?.abort();
       clearChatDisplayTimer();
       clearDefaultStateTimer();
+      clearMarketDialogueTimer();
       clearTemporaryFallbackTimer();
     };
-  }, [clearDefaultStateTimer, clearTemporaryFallbackTimer, scheduleDefaultStatePoll]);
+  }, [clearChatDisplayTimer, clearDefaultStateTimer, clearMarketDialogueTimer, clearTemporaryFallbackTimer, scheduleDefaultStatePoll]);
 
   const playAction = useCallback((action: PetAction) => {
     const meta = kanshanActionMeta[action];
@@ -232,6 +276,23 @@ export function App() {
     if (meta?.terminal) setIsDead(true);
     if (action === 'revive') setIsDead(false);
   }, [clearTemporaryFallbackTimer, isDead]);
+
+  useEffect(() => {
+    const stop = connectKanshanMarketStream({
+      onSnapshot(snapshot) {
+        const candidate = pickKanshanMarketDialogueCandidate(snapshot);
+        const nextText = candidate ? `看山播报：${candidate.text}` : snapshot.summary.trim() ? `看山播报：${snapshot.summary.trim()}` : '';
+        if (!nextText) return;
+        const isChatCoolingDown = Date.now() - lastChatInteractionAtRef.current < CHAT_MARKET_DIALOGUE_COOLDOWN_MS;
+        if (isSendingRef.current || chatInputRef.current.trim().length > 0 || isChatCoolingDown) {
+          return;
+        }
+        applyMarketDialogue(nextText, candidate?.url);
+        playAction(chooseKanshanMarketReactionAction(snapshot));
+      },
+    });
+    return stop;
+  }, [applyMarketDialogue, playAction]);
 
   const finishTemporaryAction = useCallback(() => {
     const temporaryAction = temporaryActionRef.current;
@@ -331,7 +392,9 @@ export function App() {
     pendingChatTextRef.current = '';
     visibleChatTextRef.current = '';
     isChatStreamDoneRef.current = false;
+    lastChatInteractionAtRef.current = Date.now();
     setIsSending(true);
+    setDialogueSource('chat');
     setChatError('');
     setChatText('');
     setLastUserMessage(message);
@@ -373,6 +436,7 @@ export function App() {
           return;
         }
 
+        lastChatInteractionAtRef.current = Date.now();
         setIsSending(false);
       };
 
@@ -387,6 +451,8 @@ export function App() {
   }, [submitChat]);
 
   const shellClass = IS_DESKTOP_MODE ? 'glb-shell glb-shell--desktop' : 'glb-shell';
+  const resolvedDialogueText = dialogueSource === 'market' ? marketDialogueText : chatText;
+  const resolvedIsDialogueStreaming = dialogueSource === 'chat' && isSending;
 
   const kanshanModelPreview = (
     <KanshanModelPreview
@@ -394,8 +460,10 @@ export function App() {
       chatError={chatError}
       chatInput={chatInput}
       desktopMode={IS_DESKTOP_MODE}
-      dialogueText={chatText}
-      isDialogueStreaming={isSending}
+      dialogueLinkUrl={dialogueSource === 'market' ? marketDialogueUrl : undefined}
+      dialogueSource={dialogueSource}
+      dialogueText={resolvedDialogueText}
+      isDialogueStreaming={resolvedIsDialogueStreaming}
       lastUserMessage={lastUserMessage}
       ref={previewRef}
       actionRevision={actionRevision}
@@ -429,7 +497,7 @@ export function App() {
           onChatSubmit={() => void submitChat()}
           onChatInputKeyDown={handleChatInputKeyDown}
           isSending={isSending}
-          chatText={chatText}
+          chatText={resolvedDialogueText}
           lastUserMessage={lastUserMessage}
           chatError={chatError}
         >

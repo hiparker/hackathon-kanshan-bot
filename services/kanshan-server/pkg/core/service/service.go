@@ -143,3 +143,49 @@ type StatsEventInput struct {
 type StatsService interface {
 	Event(ctx context.Context, userID string, e StatsEventInput) error
 }
+
+// ===== Market stream =====
+
+// MarketWeather is the current weather snapshot included in the websocket feed.
+type MarketWeather struct {
+	City       string `json:"city"`
+	Condition  string `json:"condition"`
+	TempC      int    `json:"temp_c"`
+	FeelsLikeC int    `json:"feels_like_c"`
+	Humidity   int    `json:"humidity"`
+}
+
+// MarketQuote is a single market data point included in the websocket feed.
+type MarketQuote struct {
+	Key           string   `json:"key"`
+	Label         string   `json:"label"`
+	Price         float64  `json:"price"`
+	Unit          string   `json:"unit,omitempty"`
+	Change        *float64 `json:"change,omitempty"`
+	ChangePercent *float64 `json:"change_percent,omitempty"`
+}
+
+// MarketNews is a single news item included in the websocket feed.
+type MarketNews struct {
+	Source      string `json:"source"`
+	Category    string `json:"category"`
+	Title       string `json:"title"`
+	Summary     string `json:"summary,omitempty"`
+	URL         string `json:"url,omitempty"`
+	PublishedAt string `json:"published_at,omitempty"`
+}
+
+// MarketSnapshot is the periodic payload pushed over websocket.
+type MarketSnapshot struct {
+	GeneratedAt int64          `json:"generated_at"`
+	Summary     string         `json:"summary"`
+	Weather     *MarketWeather `json:"weather,omitempty"`
+	Quotes      []MarketQuote  `json:"quotes"`
+	News        []MarketNews   `json:"news,omitempty"`
+	Warnings    []string       `json:"warnings,omitempty"`
+}
+
+// MarketService fetches the current weather and market snapshot for websocket clients.
+type MarketService interface {
+	Snapshot(ctx context.Context) (MarketSnapshot, error)
+}

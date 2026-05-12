@@ -19,6 +19,14 @@ make run
 curl http://localhost:8787/healthz
 ```
 
+WebSocket 行情流：
+
+```bash
+wscat -c ws://localhost:8787/ws/market
+```
+
+连接建立后会先收到一帧快照，之后按固定间隔持续推送天气、黄金价格、BTC、ETH、上证指数、深证成指、NASDAQ Composite、HANG SENG INDEX，以及腾讯新闻 / 东方财富快讯。
+
 ## 目录约定
 
 ```
@@ -111,6 +119,7 @@ basic/dao/impl    → db（仅为读 embed.FS）
 | `GET  /api/tasks` | `portal/task` | `TaskService.List` | `TaskDao.ListForUser` | §4.4 |
 | `POST /api/tasks/progress` | `portal/task` | `TaskService.Progress` | `TaskDao.GetForUser` + `UpsertProgress` | §4.4 + §7 |
 | `POST /api/stats/event` | `portal/stats` | `StatsService.Event` | `StatsDao.Append` | §4.5 |
+| `GET /ws/market` | `portal/ws` | `MarketService.Snapshot` | - | P0 websocket 行情推送 |
 
 ## 配置
 
@@ -121,6 +130,14 @@ basic/dao/impl    → db（仅为读 embed.FS）
 | `PORT` | `8787` | HTTP 监听端口 |
 | `DB_PATH` | `./kanshan.db` | SQLite 文件路径 |
 | `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
+| `MARKET_WS_PUSH_INTERVAL_SEC` | `60` | websocket 行情推送间隔（秒，最小 5） |
+| `MARKET_WEATHER_CITY` | `Beijing` | 天气查询城市 |
+| `MARKET_WEATHER_BASE_URL` | `https://wttr.in` | 可选覆盖天气公开源 |
+| `MARKET_CRYPTO_URL` | `Binance 24hr ticker URL` | 可选覆盖 BTC/ETH 公开源 |
+| `MARKET_GOLD_URL` | `https://api.gold-api.com/price/XAU` | 可选覆盖黄金公开源 |
+| `MARKET_INDEX_URL` | `新浪指数行情 URL` | 可选覆盖上证/深证/NASDAQ/恒生公开源 |
+| `MARKET_DAILY_NEWS_URL` | `https://orz.ai/api/v1/dailynews/?platform=tenxunwang` | 可选覆盖腾讯新闻源 |
+| `MARKET_HOT_NEWS_URL` | `https://api.tcslw.cn/api/hotlist/eastmoney?type=102` | 可选覆盖东方财富快讯源 |
 | `ZHIHU_OAUTH_*` |  | P0 不使用，P3 接入 OAuth2 时填 |
 
 ## 开发命令

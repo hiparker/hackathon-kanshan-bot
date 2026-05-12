@@ -16,11 +16,12 @@ import (
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/basic/util/session"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/auth"
 	distillportal "github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/distill"
-	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/mcp"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/inventory"
+	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/mcp"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/state"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/stats"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/task"
+	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/ws"
 )
 
 // New builds the chi router with middleware, /healthz, /api/auth and the
@@ -43,6 +44,7 @@ func New(logger *slog.Logger) http.Handler {
 	}))
 
 	r.Get("/healthz", health)
+	r.Route("/ws", ws.New().Routes)
 
 	r.Route("/api/auth", auth.New().Routes)
 
@@ -61,6 +63,7 @@ func New(logger *slog.Logger) http.Handler {
 	logger.Info("router ready",
 		"routes", []string{
 			"GET /healthz",
+			"GET /ws/market",
 			"POST /api/auth/zhihu",
 			"POST /api/mcp",
 			"GET /api/inventory",
