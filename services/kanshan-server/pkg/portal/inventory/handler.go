@@ -11,6 +11,7 @@ import (
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/basic/util/session"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/core/service"
 	serviceimpl "github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/core/service/impl"
+	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/debuggate"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/errx"
 )
 
@@ -67,12 +68,14 @@ type useResponse struct {
 	OK         bool      `json:"ok"`
 	NewState   stateView `json:"new_state"`
 	ActionHint string    `json:"action_hint"`
+	Message    string    `json:"message,omitempty"`
 }
 
 type stateView struct {
 	Hunger     int    `json:"hunger"`
 	Happiness  int    `json:"happiness"`
 	Energy     int    `json:"energy"`
+	Spirit     int    `json:"spirit"`
 	Health     int    `json:"health"`
 	Growth     int    `json:"growth"`
 	Mood       string `json:"mood"`
@@ -106,6 +109,10 @@ func (h *Handler) deduct(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) restock(w http.ResponseWriter, r *http.Request) {
+	if !debuggate.Require(w) {
+		return
+	}
+
 	var req qtyRequest
 	if !httpx.DecodeJSON(w, r, &req) {
 		return
@@ -136,6 +143,7 @@ func (h *Handler) use(w http.ResponseWriter, r *http.Request) {
 			Hunger:     res.NewState.Hunger,
 			Happiness:  res.NewState.Happiness,
 			Energy:     res.NewState.Energy,
+			Spirit:     res.NewState.Spirit,
 			Health:     res.NewState.Health,
 			Growth:     res.NewState.Growth,
 			Mood:       res.NewState.Mood,
@@ -143,6 +151,7 @@ func (h *Handler) use(w http.ResponseWriter, r *http.Request) {
 			LastTickAt: res.NewState.LastTickAt,
 		},
 		ActionHint: res.ActionHint,
+		Message:    res.Message,
 	})
 }
 

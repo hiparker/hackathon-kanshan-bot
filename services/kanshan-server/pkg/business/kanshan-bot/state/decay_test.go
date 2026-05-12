@@ -16,39 +16,51 @@ func TestApplyNoOpWhenLessThanOneHour(t *testing.T) {
 func TestApplyHourlyDecay(t *testing.T) {
 	pet := &Pet{Hunger: 100, Happiness: 100, Energy: 100, Health: 100, Lifecycle: "normal", LastTickAt: 0}
 	Apply(pet, 3600, DefaultDecay)
-	if pet.Health != 95 {
-		t.Fatalf("Health expected 95, got %d", pet.Health)
+	if pet.Health != 100 {
+		t.Fatalf("Health expected unchanged 100, got %d", pet.Health)
 	}
-	if pet.Hunger != 98 || pet.Happiness != 98 || pet.Energy != 98 {
-		t.Fatalf("expected -2 each, got %+v", pet)
+	if pet.Hunger != 98 || pet.Happiness != 100 || pet.Energy != 100 {
+		t.Fatalf("expected hunger-only decay, got %+v", pet)
 	}
 	if pet.LastTickAt != 3600 {
 		t.Fatalf("LastTickAt expected 3600, got %d", pet.LastTickAt)
 	}
 }
 
-func TestSickAcceleratesHealthDecay(t *testing.T) {
+func TestSickDoesNotDecayHealth(t *testing.T) {
 	pet := &Pet{Health: 100, Hunger: 100, Happiness: 100, Energy: 100, Lifecycle: "sick", LastTickAt: 0}
 	Apply(pet, 3600, DefaultDecay)
-	if pet.Health != 90 {
-		t.Fatalf("sick health decay expected 90, got %d", pet.Health)
+	if pet.Health != 100 {
+		t.Fatalf("sick health expected unchanged 100, got %d", pet.Health)
 	}
 }
 
-func TestSickToDeadAfter48h(t *testing.T) {
+func TestSickToDeadAfterThreeDays(t *testing.T) {
 	startSick := int64(1000)
 	pet := &Pet{Health: 0, Hunger: 100, Happiness: 100, Energy: 100, Lifecycle: "sick", SickStartedAt: &startSick, LastTickAt: 1000}
-	Apply(pet, 1000+48*3600+1, DefaultDecay)
+	pet.Hunger = 0
+	Apply(pet, 1000+72*3600+1, DefaultDecay)
 	if pet.Lifecycle != "dead" {
-		t.Fatalf("expected lifecycle=dead after 48h sick, got %s", pet.Lifecycle)
+		t.Fatalf("expected lifecycle=dead after 72h sick, got %s", pet.Lifecycle)
 	}
 }
 
-func TestHungryTransitionWhenHungerHitsZero(t *testing.T) {
+func TestSickTransitionWhenHungerHitsZero(t *testing.T) {
 	pet := &Pet{Hunger: 2, Happiness: 100, Energy: 100, Health: 100, Lifecycle: "normal", LastTickAt: 0}
 	Apply(pet, 3600, DefaultDecay)
 	if pet.Hunger != 0 {
 		t.Fatalf("Hunger expected 0, got %d", pet.Hunger)
+	}
+	if pet.Lifecycle != "sick" {
+		t.Fatalf("expected sick lifecycle, got %s", pet.Lifecycle)
+	}
+}
+
+func TestHungryTransitionBelowSixty(t *testing.T) {
+	pet := &Pet{Hunger: 61, Happiness: 100, Energy: 100, Health: 100, Lifecycle: "normal", LastTickAt: 0}
+	Apply(pet, 3600, DefaultDecay)
+	if pet.Hunger != 59 {
+		t.Fatalf("Hunger expected 59, got %d", pet.Hunger)
 	}
 	if pet.Lifecycle != "hungry" {
 		t.Fatalf("expected hungry lifecycle, got %s", pet.Lifecycle)

@@ -1,6 +1,8 @@
+#![allow(unexpected_cfgs)]
+
 use std::process::Command;
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 use tauri::{
@@ -15,7 +17,8 @@ const DESKTOP_WINDOW_WIDTH: f64 = 540.0;
 const DESKTOP_WINDOW_HEIGHT: f64 = 430.0;
 const SNAP_MARGIN: f64 = 0.0;
 const PASSTHROUGH_POLL_MS: u64 = 32;
-const DRAG_FOLLOW_POLL_MS: u64 = 8;
+const DRAG_FOLLOW_POLL_MS: u64 = 4;
+const DRAG_MONITOR_REFRESH_MS: u64 = 500;
 
 struct DragState(Mutex<DragInner>);
 
@@ -42,6 +45,22 @@ struct InteractiveRegion {
     y: f64,
     width: f64,
     height: f64,
+}
+
+#[derive(Clone, Copy)]
+struct StageBounds {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+#[derive(Clone, Copy)]
+struct StageScreenRect {
+    left: f64,
+    top: f64,
+    right: f64,
+    bottom: f64,
 }
 
 impl Default for DragInner {
@@ -162,17 +181,15 @@ fn kanshan_begin_window_drag(window: WebviewWindow) -> Result<(), String> {
     let cursor = window
         .cursor_position()
         .map_err(|error| error.to_string())?;
-    let win_pos = window
-        .outer_position()
-        .map_err(|error| error.to_string())?;
+    let window_position = window.outer_position().map_err(|error| error.to_string())?;
 
     if let Some(state) = window.try_state::<DragState>() {
         let mut inner = state.0.lock().unwrap();
         inner.passthrough_suppressed = true;
         inner.follow = DragFollow {
             active: true,
-            cursor_offset_x: cursor.x - win_pos.x as f64,
-            cursor_offset_y: cursor.y - win_pos.y as f64,
+            cursor_offset_x: cursor.x - window_position.x as f64,
+            cursor_offset_y: cursor.y - window_position.y as f64,
         };
     }
     Ok(())
@@ -185,7 +202,6 @@ fn kanshan_end_window_drag(window: WebviewWindow) {
         inner.follow.active = false;
         inner.passthrough_suppressed = false;
     }
-    clamp_window_into_screen(&window);
 }
 
 #[tauri::command]
@@ -195,7 +211,7 @@ fn kanshan_clamp_window_into_view(window: WebviewWindow) {
 
 #[tauri::command]
 fn kanshan_open_external_url(url: String) -> Result<(), String> {
-    if url != "https://zhida.ai/" {
+    if !is_allowed_external_url(&url) {
         return Err("unsupported external url".into());
     }
 
@@ -208,6 +224,13 @@ fn kanshan_open_external_url(url: String) -> Result<(), String> {
     };
 
     result.map(|_| ()).map_err(|error| error.to_string())
+}
+
+fn is_allowed_external_url(url: &str) -> bool {
+    url == "https://zhida.ai/"
+        || ((url.starts_with("http://localhost:") || url.starts_with("http://127.0.0.1:"))
+            && url.contains("/api/auth/zhihu/login"))
+        || (url.starts_with("https://") && url.contains("/api/auth/zhihu/login"))
 }
 
 fn normalize_snap_edge(edge: &str) -> Option<&'static str> {
@@ -281,30 +304,35 @@ fn spawn_cursor_passthrough_loop(window: WebviewWindow) {
             let in_window =
                 local_x >= 0.0 && local_x <= width && local_y >= 0.0 && local_y <= height;
 
-            let (stage_x_logical, stage_y_logical, interactive_regions, passthrough_suppressed) = window
-                .try_state::<DragState>()
-                .map(|state| {
-                    let inner = state.0.lock().unwrap();
-                    (
-                        inner.stage_x_logical,
-                        inner.stage_y_logical,
-                        inner.interactive_regions.clone(),
-                        inner.passthrough_suppressed,
-                    )
-                })
-                .unwrap_or((
-                    width / scale - DESKTOP_STAGE_SIZE,
-                    (height / scale - DESKTOP_STAGE_SIZE) / 2.0,
-                    Vec::new(),
-                    false,
-                ));
+            let (stage_x_logical, stage_y_logical, interactive_regions, passthrough_suppressed) =
+                window
+                    .try_state::<DragState>()
+                    .map(|state| {
+                        let inner = state.0.lock().unwrap();
+                        (
+                            inner.stage_x_logical,
+                            inner.stage_y_logical,
+                            inner.interactive_regions.clone(),
+                            inner.passthrough_suppressed,
+                        )
+                    })
+                    .unwrap_or((
+                        width / scale - DESKTOP_STAGE_SIZE,
+                        (height / scale - DESKTOP_STAGE_SIZE) / 2.0,
+                        Vec::new(),
+                        false,
+                    ));
             let stage_size = DESKTOP_STAGE_SIZE * scale;
-            let stage_x = stage_x_logical * scale;
-            let stage_y = stage_y_logical * scale;
-            let in_stage = local_x >= stage_x
-                && local_x <= stage_x + stage_size
-                && local_y >= stage_y
-                && local_y <= stage_y + stage_size;
+            let stage_bounds = resolve_stage_bounds(
+                &interactive_regions,
+                stage_x_logical * scale,
+                stage_y_logical * scale,
+                stage_size,
+            );
+            let in_stage = local_x >= stage_bounds.x
+                && local_x <= stage_bounds.x + stage_bounds.width
+                && local_y >= stage_bounds.y
+                && local_y <= stage_bounds.y + stage_bounds.height;
             let in_dom_region = interactive_regions.iter().any(|region| {
                 local_x >= region.x
                     && local_x <= region.x + region.width
@@ -312,8 +340,7 @@ fn spawn_cursor_passthrough_loop(window: WebviewWindow) {
                     && local_y <= region.y + region.height
             });
 
-            let interactive =
-                passthrough_suppressed || (in_window && (in_stage || in_dom_region));
+            let interactive = passthrough_suppressed || (in_window && (in_stage || in_dom_region));
             let should_ignore = !interactive;
 
             if last_ignore != Some(should_ignore) {
@@ -326,60 +353,104 @@ fn spawn_cursor_passthrough_loop(window: WebviewWindow) {
 
 fn spawn_drag_follow_loop(window: WebviewWindow) {
     tauri::async_runtime::spawn(async move {
+        let mut drag_monitors: Vec<tauri::Monitor> = Vec::new();
+        let mut was_following = false;
+        let mut last_target: Option<(i32, i32)> = None;
+        let mut last_monitor_refresh: Option<Instant> = None;
+
         loop {
             tokio::time::sleep(Duration::from_millis(DRAG_FOLLOW_POLL_MS)).await;
 
             let Some(state) = window.try_state::<DragState>() else {
                 continue;
             };
-            let (follow, stage_x_logical, stage_y_logical) = {
+            let (follow, snap_edge, stage_x_logical, stage_y_logical) = {
                 let inner = state.0.lock().unwrap();
-                (inner.follow, inner.stage_x_logical, inner.stage_y_logical)
+                (
+                    inner.follow,
+                    inner.snap_edge,
+                    inner.stage_x_logical,
+                    inner.stage_y_logical,
+                )
             };
             if !follow.active {
+                if was_following {
+                    drag_monitors.clear();
+                    last_target = None;
+                    last_monitor_refresh = None;
+                    was_following = false;
+                }
+                continue;
+            }
+            if !was_following {
+                drag_monitors = window.available_monitors().unwrap_or_default();
+                last_monitor_refresh = Some(Instant::now());
+                was_following = true;
+            }
+            if !is_primary_mouse_down() {
+                if let Some(state) = window.try_state::<DragState>() {
+                    let mut inner = state.0.lock().unwrap();
+                    inner.follow.active = false;
+                    inner.passthrough_suppressed = false;
+                }
+                drag_monitors.clear();
+                last_target = None;
+                last_monitor_refresh = None;
+                was_following = false;
                 continue;
             }
 
             let Ok(cursor) = window.cursor_position() else {
                 continue;
             };
-            let Ok(monitors) = window.available_monitors() else {
-                continue;
-            };
             let scale = window.scale_factor().unwrap_or(1.0);
-            let stage_size = DESKTOP_STAGE_SIZE * scale;
-            let stage_x = stage_x_logical * scale;
-            let stage_y = stage_y_logical * scale;
+            let stage_bounds = StageBounds {
+                x: stage_x_logical * scale,
+                y: stage_y_logical * scale,
+                width: DESKTOP_STAGE_SIZE * scale,
+                height: DESKTOP_STAGE_SIZE * scale,
+            };
 
-            let mut target_x = cursor.x - follow.cursor_offset_x;
-            let mut target_y = cursor.y - follow.cursor_offset_y;
-
-            let stage_center_x = target_x + stage_x + stage_size / 2.0;
-            let stage_center_y = target_y + stage_y + stage_size / 2.0;
-
-            if let Some(work) = pick_work_area(&monitors, cursor.x, cursor.y)
-                .or_else(|| pick_work_area(&monitors, stage_center_x, stage_center_y))
-            {
-                let (wl, wt, wr, wb) = work_area_bounds(&work);
-                let min_x = wl - stage_x;
-                let max_x = wr - stage_size - stage_x;
-                let min_y = wt - stage_y;
-                let max_y = wb - stage_size - stage_y;
-                target_x = target_x.clamp(min_x, max_x.max(min_x));
-                target_y = target_y.clamp(min_y, max_y.max(min_y));
+            let should_refresh_monitors = drag_monitors.is_empty()
+                || last_monitor_refresh
+                    .map(|last| last.elapsed() >= Duration::from_millis(DRAG_MONITOR_REFRESH_MS))
+                    .unwrap_or(true);
+            if should_refresh_monitors {
+                let refreshed = window.available_monitors().unwrap_or_default();
+                if !refreshed.is_empty() {
+                    drag_monitors = refreshed;
+                    last_monitor_refresh = Some(Instant::now());
+                }
             }
 
-            let target = PhysicalPosition::new(target_x.round() as i32, target_y.round() as i32);
-            let _ = window.set_position(target);
+            if let Some(work) = pick_work_area(&drag_monitors, cursor.x, cursor.y) {
+                let (wl, wt, wr, wb) = work_area_bounds(&work);
+                let mut target_x = cursor.x - follow.cursor_offset_x;
+                let mut target_y = cursor.y - follow.cursor_offset_y;
+                let target_stage = stage_rect_at(target_x, target_y, stage_bounds);
+                let next_edge = horizontal_edge_for_stage_center(target_stage, wl, wr);
+                if next_edge != snap_edge {
+                    set_snap_edge_only(&window, next_edge);
+                }
+
+                let min_x = wl - stage_bounds.x;
+                let max_x = wr - stage_bounds.width - stage_bounds.x;
+                let min_y = wt - stage_bounds.y;
+                let max_y = wb - stage_bounds.height - stage_bounds.y;
+                target_x = target_x.clamp(min_x, max_x.max(min_x));
+                target_y = target_y.clamp(min_y, max_y.max(min_y));
+
+                let target = (target_x.round() as i32, target_y.round() as i32);
+                if last_target != Some(target) {
+                    last_target = Some(target);
+                    let _ = window.set_position(PhysicalPosition::new(target.0, target.1));
+                }
+            }
         }
     });
 }
 
-fn pick_work_area(
-    monitors: &[tauri::Monitor],
-    x: f64,
-    y: f64,
-) -> Option<MonitorWorkArea> {
+fn pick_work_area(monitors: &[tauri::Monitor], x: f64, y: f64) -> Option<MonitorWorkArea> {
     let containing = monitors.iter().find(|m| {
         let (l, t, r, b) = work_area_bounds(&monitor_work_area(m));
         x >= l && x <= r && y >= t && y <= b
@@ -400,6 +471,156 @@ fn pick_work_area(
         })
         .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(_, work)| work)
+}
+
+fn resolve_stage_bounds(
+    interactive_regions: &[InteractiveRegion],
+    fallback_x: f64,
+    fallback_y: f64,
+    fallback_size: f64,
+) -> StageBounds {
+    interactive_regions
+        .iter()
+        .find(|region| region.width >= fallback_size * 0.8 && region.height >= fallback_size * 0.8)
+        .map(|region| StageBounds {
+            x: region.x,
+            y: region.y,
+            width: region.width,
+            height: region.height,
+        })
+        .unwrap_or(StageBounds {
+            x: fallback_x,
+            y: fallback_y,
+            width: fallback_size,
+            height: fallback_size,
+        })
+}
+
+fn stage_bounds_for_edge(edge: &str, scale: f64) -> StageBounds {
+    let stage_size = DESKTOP_STAGE_SIZE * scale;
+    let window_width = DESKTOP_WINDOW_WIDTH * scale;
+    let window_height = DESKTOP_WINDOW_HEIGHT * scale;
+    let x = if edge == "left" {
+        0.0
+    } else if edge == "right" {
+        window_width - stage_size
+    } else {
+        (window_width - stage_size) / 2.0
+    };
+    let y = if edge == "top" {
+        0.0
+    } else if edge == "bottom" {
+        window_height - stage_size
+    } else {
+        (window_height - stage_size) / 2.0
+    };
+
+    StageBounds {
+        x,
+        y,
+        width: stage_size,
+        height: stage_size,
+    }
+}
+
+fn stage_rect_at(window_x: f64, window_y: f64, stage_bounds: StageBounds) -> StageScreenRect {
+    StageScreenRect {
+        left: window_x + stage_bounds.x,
+        top: window_y + stage_bounds.y,
+        right: window_x + stage_bounds.x + stage_bounds.width,
+        bottom: window_y + stage_bounds.y + stage_bounds.height,
+    }
+}
+
+fn nearest_edge(stage: StageScreenRect, wl: f64, wt: f64, wr: f64, wb: f64) -> &'static str {
+    let candidates: [(&'static str, f64); 4] = [
+        ("left", (stage.left - wl).abs()),
+        ("right", (wr - stage.right).abs()),
+        ("top", (stage.top - wt).abs()),
+        ("bottom", (wb - stage.bottom).abs()),
+    ];
+    candidates
+        .iter()
+        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|item| item.0)
+        .unwrap_or("right")
+}
+
+fn horizontal_edge_for_stage_center(stage: StageScreenRect, wl: f64, wr: f64) -> &'static str {
+    let center_x = (stage.left + stage.right) / 2.0;
+    if center_x <= (wl + wr) / 2.0 {
+        "left"
+    } else {
+        "right"
+    }
+}
+
+fn snap_window_position(
+    edge: &str,
+    stage: StageScreenRect,
+    work: MonitorWorkArea,
+    scale: f64,
+) -> (f64, f64, StageBounds) {
+    let (wl, wt, wr, wb) = work_area_bounds(&work);
+    let stage_bounds = stage_bounds_for_edge(edge, scale);
+    let snap_margin = SNAP_MARGIN * scale;
+
+    let mut x = stage.left - stage_bounds.x;
+    let mut y = stage.top - stage_bounds.y;
+
+    match edge {
+        "left" => x = wl - stage_bounds.x + snap_margin,
+        "right" => x = wr - stage_bounds.width - stage_bounds.x - snap_margin,
+        "top" => y = wt - stage_bounds.y + snap_margin,
+        "bottom" => y = wb - stage_bounds.height - stage_bounds.y - snap_margin,
+        _ => {}
+    }
+
+    if edge == "left" || edge == "right" {
+        y = (stage.top - stage_bounds.y).clamp(
+            wt - stage_bounds.y,
+            (wb - stage_bounds.height - stage_bounds.y).max(wt - stage_bounds.y),
+        );
+    }
+    if edge == "top" || edge == "bottom" {
+        x = (stage.left - stage_bounds.x).clamp(
+            wl - stage_bounds.x,
+            (wr - stage_bounds.width - stage_bounds.x).max(wl - stage_bounds.x),
+        );
+    }
+
+    let min_x = wl - stage_bounds.x;
+    let max_x = wr - stage_bounds.width - stage_bounds.x;
+    let min_y = wt - stage_bounds.y;
+    let max_y = wb - stage_bounds.height - stage_bounds.y;
+    x = x.clamp(min_x, max_x.max(min_x));
+    y = y.clamp(min_y, max_y.max(min_y));
+
+    (x, y, stage_bounds)
+}
+
+fn set_snap_edge_only(window: &WebviewWindow, edge: &'static str) {
+    if let Some(state) = window.try_state::<DragState>() {
+        state.0.lock().unwrap().snap_edge = edge;
+    }
+
+    let _ = window.emit("kanshan://snap-edge", edge);
+}
+
+fn set_snap_edge_state(
+    window: &WebviewWindow,
+    edge: &'static str,
+    stage_bounds: StageBounds,
+    scale: f64,
+) {
+    if let Some(state) = window.try_state::<DragState>() {
+        let mut inner = state.0.lock().unwrap();
+        inner.snap_edge = edge;
+        inner.stage_x_logical = stage_bounds.x / scale;
+        inner.stage_y_logical = stage_bounds.y / scale;
+    }
+
+    let _ = window.emit("kanshan://snap-edge", edge);
 }
 
 #[derive(Clone, Copy)]
@@ -433,30 +654,38 @@ fn clamp_window_into_screen(window: &WebviewWindow) {
         return;
     };
     let scale = window.scale_factor().unwrap_or(1.0);
-    let (stage_x_logical, stage_y_logical) = window
+    let (stage_x_logical, stage_y_logical, interactive_regions) = window
         .try_state::<DragState>()
         .map(|state| {
             let inner = state.0.lock().unwrap();
-            (inner.stage_x_logical, inner.stage_y_logical)
+            (
+                inner.stage_x_logical,
+                inner.stage_y_logical,
+                inner.interactive_regions.clone(),
+            )
         })
-        .unwrap_or((0.0, 0.0));
+        .unwrap_or((0.0, 0.0, Vec::new()));
     let stage_size = DESKTOP_STAGE_SIZE * scale;
-    let stage_x = stage_x_logical * scale;
-    let stage_y = stage_y_logical * scale;
+    let stage_bounds = resolve_stage_bounds(
+        &interactive_regions,
+        stage_x_logical * scale,
+        stage_y_logical * scale,
+        stage_size,
+    );
 
     let mut x = position.x as f64;
     let mut y = position.y as f64;
-    let center_x = x + stage_x + stage_size / 2.0;
-    let center_y = y + stage_y + stage_size / 2.0;
+    let center_x = x + stage_bounds.x + stage_bounds.width / 2.0;
+    let center_y = y + stage_bounds.y + stage_bounds.height / 2.0;
 
     let Some(work) = pick_work_area(&monitors, center_x, center_y) else {
         return;
     };
     let (wl, wt, wr, wb) = work_area_bounds(&work);
-    let min_x = wl - stage_x;
-    let max_x = wr - stage_size - stage_x;
-    let min_y = wt - stage_y;
-    let max_y = wb - stage_size - stage_y;
+    let min_x = wl - stage_bounds.x;
+    let max_x = wr - stage_bounds.width - stage_bounds.x;
+    let min_y = wt - stage_bounds.y;
+    let max_y = wb - stage_bounds.height - stage_bounds.y;
     x = x.clamp(min_x, max_x.max(min_x));
     y = y.clamp(min_y, max_y.max(min_y));
 
@@ -479,6 +708,25 @@ fn spawn_snap_edge_announce_loop(window: WebviewWindow) {
     });
 }
 
+#[cfg(target_os = "macos")]
+#[allow(deprecated)]
+fn is_primary_mouse_down() -> bool {
+    use cocoa::appkit::NSEvent;
+    use cocoa::base::nil;
+    unsafe { NSEvent::pressedMouseButtons(nil) & 1 == 1 }
+}
+
+#[cfg(target_os = "windows")]
+fn is_primary_mouse_down() -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetAsyncKeyState, VK_LBUTTON};
+    unsafe { GetAsyncKeyState(VK_LBUTTON as i32) < 0 }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn is_primary_mouse_down() -> bool {
+    true
+}
+
 fn snap_window_to_edge(window: &WebviewWindow) {
     let Ok(Some(monitor)) = window.current_monitor() else {
         return;
@@ -486,10 +734,6 @@ fn snap_window_to_edge(window: &WebviewWindow) {
     let Ok(window_pos) = window.outer_position() else {
         return;
     };
-    let Ok(window_size) = window.outer_size() else {
-        return;
-    };
-
     let monitor_size = monitor.size();
     let monitor_pos = monitor.position();
     let scale = monitor.scale_factor();
@@ -501,67 +745,25 @@ fn snap_window_to_edge(window: &WebviewWindow) {
 
     let win_left = window_pos.x as f64;
     let win_top = window_pos.y as f64;
-    let win_width = window_size.width as f64;
-    let win_height = window_size.height as f64;
-
-    let snap_margin = (SNAP_MARGIN * scale).round();
-
-    let dist_left = win_left - monitor_left;
-    let dist_right = monitor_right - (win_left + win_width);
-    let dist_top = win_top - monitor_top;
-    let dist_bottom = monitor_bottom - (win_top + win_height);
-
-    let candidates: [(&'static str, f64); 4] = [
-        ("left", dist_left.max(0.0)),
-        ("right", dist_right.max(0.0)),
-        ("top", dist_top.max(0.0)),
-        ("bottom", dist_bottom.max(0.0)),
-    ];
-
-    let edge = candidates
-        .iter()
-        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-        .map(|item| item.0)
+    let snap_edge = window
+        .try_state::<DragState>()
+        .map(|state| {
+            let inner = state.0.lock().unwrap();
+            inner.snap_edge
+        })
         .unwrap_or("right");
+    let stage_bounds = stage_bounds_for_edge(snap_edge, scale);
+    let stage = stage_rect_at(win_left, win_top, stage_bounds);
 
-    let mut new_x = win_left;
-    let mut new_y = win_top;
-
-    match edge {
-        "left" => new_x = monitor_left + snap_margin,
-        "right" => new_x = monitor_right - win_width - snap_margin,
-        "top" => new_y = monitor_top + snap_margin,
-        "bottom" => new_y = monitor_bottom - win_height - snap_margin,
-        _ => {}
-    }
-
-    // Keep the model stage itself on the selected desktop edge even though the
-    // transparent window has extra room for dialogue and menus.
-    if edge == "left" || edge == "right" {
-        new_y = (monitor_top + (monitor_bottom - monitor_top - win_height) / 2.0)
-            .clamp(monitor_top, (monitor_bottom - win_height).max(monitor_top));
-    }
-    if edge == "top" || edge == "bottom" {
-        new_x = (monitor_left + (monitor_right - monitor_left - win_width) / 2.0)
-            .clamp(monitor_left, (monitor_right - win_width).max(monitor_left));
-    }
-    if edge == "right" {
-        new_x = monitor_right - win_width - snap_margin;
-    }
-    if edge == "bottom" {
-        new_y = monitor_bottom - win_height - snap_margin;
-    }
-    if edge == "left" {
-        new_x = monitor_left + snap_margin;
-    }
-    if edge == "top" {
-        new_y = monitor_top + snap_margin;
-    }
-
-    let max_x = monitor_right - win_width;
-    let max_y = monitor_bottom - win_height;
-    new_x = new_x.clamp(monitor_left, max_x.max(monitor_left));
-    new_y = new_y.clamp(monitor_top, max_y.max(monitor_top));
+    let work = MonitorWorkArea {
+        x: monitor_left,
+        y: monitor_top,
+        width: monitor_right - monitor_left,
+        height: monitor_bottom - monitor_top,
+    };
+    let (wl, wt, wr, wb) = work_area_bounds(&work);
+    let edge = nearest_edge(stage, wl, wt, wr, wb);
+    let (new_x, new_y, next_stage_bounds) = snap_window_position(edge, stage, work, scale);
 
     let target = PhysicalPosition::new(new_x.round() as i32, new_y.round() as i32);
     if target.x != window_pos.x || target.y != window_pos.y {
@@ -569,10 +771,8 @@ fn snap_window_to_edge(window: &WebviewWindow) {
     }
 
     if let Some(state) = window.try_state::<DragState>() {
-        let mut inner = state.0.lock().unwrap();
-        inner.snap_edge = edge;
-        drop(inner);
-        let _ = window.emit("kanshan://snap-edge", edge);
+        drop(state);
+        set_snap_edge_state(window, edge, next_stage_bounds, scale);
     } else {
         let _ = window.emit("kanshan://snap-edge", edge);
     }
@@ -589,10 +789,11 @@ fn configure_macos_app(app: &tauri::AppHandle) {
 fn configure_macos_app(_app: &tauri::AppHandle) {}
 
 #[cfg(target_os = "macos")]
-#[allow(deprecated)]
+#[allow(deprecated, unexpected_cfgs)]
 fn make_window_clear(window: &WebviewWindow) {
     use cocoa::appkit::{NSColor, NSWindow};
     use cocoa::base::{id, nil, NO};
+    use objc::{msg_send, sel, sel_impl};
 
     let Ok(ns_window_ptr) = window.ns_window() else {
         return;
@@ -607,6 +808,14 @@ fn make_window_clear(window: &WebviewWindow) {
         let clear: id = NSColor::clearColor(nil);
         NSWindow::setBackgroundColor_(ns_window, clear);
         NSWindow::setHasShadow_(ns_window, NO);
+
+        // Keep the desktop companion visible when users swipe between macOS Spaces.
+        let current_behavior: u64 = msg_send![ns_window, collectionBehavior];
+        let can_join_all_spaces = 1_u64 << 0;
+        let stationary = 1_u64 << 4;
+        let full_screen_auxiliary = 1_u64 << 8;
+        let behavior = current_behavior | can_join_all_spaces | stationary | full_screen_auxiliary;
+        let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
     }
 }
 

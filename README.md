@@ -75,9 +75,22 @@ curl http://localhost:8787/healthz
 | `pnpm --filter @kanshan/react-host dev` | 前端 | 启动 React 示例应用。 |
 | `pnpm --filter @kanshan/desktop-tauri dev` | 桌面端 | 启动透明桌宠窗口和系统托盘。 |
 | `pnpm --filter @kanshan/desktop-tauri build` | 桌面端 | 打包 macOS / Windows 桌面应用。 |
+| `pnpm release desktop -- --bump patch --push` | 发布 | 升级桌面包版本、提交、打 tag 并触发 GitHub Release 打包。 |
 | `cd services/kanshan-server && make run` | 后端 | 跑迁移并启动 HTTP 服务。 |
 | `cd services/kanshan-server && make migrate` | 后端 | 仅跑迁移后退出。 |
 | `cd services/kanshan-server && make test` | 后端 | 运行 Go 单元测试（含状态衰减算法）。 |
+
+## 发布流程
+
+统一使用 [`scripts/release.mjs`](./scripts/release.mjs) 管理客户端发布，避免手动改版本、提交和打 tag。
+
+```bash
+pnpm release desktop -- --dry-run              # 预览下一次 patch 版本
+pnpm release desktop -- --bump patch --push    # 例如 1.0.2 -> 1.0.3，并推 tag 触发 CI
+pnpm release desktop -- --version 1.1.0 --push # 指定版本发布
+```
+
+当前桌面端只把 `apps/desktop-tauri/src-tauri/tauri.conf.json` 作为打包版本源；根目录和工作区 `package.json` 不随桌面包版本变化。后续新增浏览器插件时，在 `scripts/release.mjs` 的 `targets` 中加入插件的 manifest/package 版本文件即可复用同一条发布命令。
 
 ## 当前阶段
 

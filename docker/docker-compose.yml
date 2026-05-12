@@ -1,0 +1,33 @@
+services:
+  kanshan-server:
+    image: kanshan-server:local
+    build:
+      context: ..
+      dockerfile: docker/backend.Dockerfile
+    container_name: kanshan-server
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    environment:
+      PORT: "8787"
+      DB_PATH: /data/kanshan-sql/kanshan.db
+      LOG_LEVEL: info
+      KANSHAN_DEBUG_MODE: "false"
+      ZHIHU_OAUTH_CLIENT_ID: ""
+      ZHIHU_OAUTH_CLIENT_SECRET: ""
+      ZHIHU_OAUTH_REDIRECT_URI: ""
+      ZHIHU_OAUTH_AUTHORIZE_URL: https://www.zhihu.com/oauth/authorize
+      ZHIHU_OAUTH_TOKEN_URL: https://www.zhihu.com/oauth/token
+      ZHIHU_OAUTH_USER_INFO_URL: https://www.zhihu.com/oauth/userinfo
+      ZHIHU_OAUTH_SCOPE: ""
+      VITE_KANSHAN_AUTH_MODE: mock
+      VITE_KANSHAN_AUTH_CODE: local-dev
+      SECONDME_LAB_BASE_URL: ""
+    volumes:
+      - /data/kanshan-sql:/data/kanshan-sql
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8787/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

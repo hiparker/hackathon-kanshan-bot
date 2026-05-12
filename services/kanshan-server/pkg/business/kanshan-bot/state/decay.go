@@ -6,16 +6,16 @@ package state
 // Pet captures the subset of pet_state used by the decay algorithm. Fields
 // match the SQL columns one-to-one so callers can fill it from a row scan.
 type Pet struct {
-	Hunger             int
-	Happiness          int
-	Energy             int
-	Health             int
-	Growth             int
-	Mood               string
-	Lifecycle          string
-	LastTickAt         int64
-	SickStartedAt      *int64
-	RunawayStartedAt   *int64
+	Hunger           int
+	Happiness        int
+	Energy           int
+	Health           int
+	Growth           int
+	Mood             string
+	Lifecycle        string
+	LastTickAt       int64
+	SickStartedAt    *int64
+	RunawayStartedAt *int64
 }
 
 // DecayPerHour is the hackathon-simplified decay rate (avg of rand 1..3 ranges,
@@ -30,11 +30,11 @@ type DecayPerHour struct {
 }
 
 var DefaultDecay = DecayPerHour{
-	HealthNormal:    5,
-	HealthSick:      10,
-	Happiness:       2,
+	HealthNormal:    0,
+	HealthSick:      0,
+	Happiness:       0,
 	Hunger:          2,
-	Energy:          2,
+	Energy:          0,
 	HappinessIgnore: 5,
 }
 
@@ -46,33 +46,40 @@ func Apply(pet *Pet, now int64, decay DecayPerHour) *Pet {
 	}
 	deltaHours := int((now - pet.LastTickAt) / 3600)
 	if deltaHours <= 0 {
+		NormalizeLifecycle(pet, now)
 		return pet
 	}
 
-	healthRate := decay.HealthNormal
-	if pet.Lifecycle == "sick" {
-		healthRate = decay.HealthSick
-	}
-
-	pet.Health = clamp(pet.Health - healthRate*deltaHours)
-	pet.Happiness = clamp(pet.Happiness - decay.Happiness*deltaHours)
 	pet.Hunger = clamp(pet.Hunger - decay.Hunger*deltaHours)
-	pet.Energy = clamp(pet.Energy - decay.Energy*deltaHours)
-
-	if pet.Hunger <= 0 && pet.Lifecycle == "normal" {
-		pet.Lifecycle = "hungry"
-	}
-	if pet.Health <= 0 && pet.Lifecycle != "sick" && pet.Lifecycle != "dead" {
-		pet.Lifecycle = "sick"
-		ts := now
-		pet.SickStartedAt = &ts
-	}
-	if pet.Lifecycle == "sick" && pet.SickStartedAt != nil && now-*pet.SickStartedAt >= 48*3600 {
-		pet.Lifecycle = "dead"
-	}
+	NormalizeLifecycle(pet, now)
 
 	pet.LastTickAt = now
 	return pet
+}
+
+// NormalizeLifecycle derives the long-term state from hunger. It intentionally
+// leaves an already-dead pet dead until a revive effect overrides lifecycle.
+func NormalizeLifecycle(pet *Pet, now int64) {
+	if pet == nil || pet.Lifecycle == "dead" {
+		return
+	}
+	if pet.Hunger <= 0 {
+		if pet.Lifecycle != "sick" {
+			pet.Lifecycle = "sick"
+			ts := now
+			pet.SickStartedAt = &ts
+		}
+		if pet.SickStartedAt != nil && now-*pet.SickStartedAt >= 72*3600 {
+			pet.Lifecycle = "dead"
+		}
+		return
+	}
+	pet.SickStartedAt = nil
+	if pet.Hunger < 60 {
+		pet.Lifecycle = "hungry"
+		return
+	}
+	pet.Lifecycle = "normal"
 }
 
 func clamp(v int) int {
@@ -89,10 +96,10 @@ func clamp(v int) int {
 // stand-in until the SQLite repository is wired up.
 func Default(lastTickAt int64) *Pet {
 	return &Pet{
-		Hunger:     90,
-		Happiness:  85,
-		Energy:     80,
-		Health:     95,
+		Hunger:     100,
+		Happiness:  100,
+		Energy:     100,
+		Health:     100,
 		Growth:     0,
 		Mood:       "normal",
 		Lifecycle:  "normal",

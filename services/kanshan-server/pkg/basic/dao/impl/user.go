@@ -60,13 +60,11 @@ func (d *userDao) seedDefaultInventory(ctx context.Context, userID string, now i
 	_, err := d.db.ExecContext(ctx, `
 		INSERT INTO user_items(user_id, item_id, qty, last_obtained_at)
 		VALUES
-			(?, 'fish-jerky', 12, ?),
-			(?, 'nutrition-can', 5, ?),
-			(?, 'cold-medicine', 3, ?),
-			(?, 'revive-feather', 1, ?),
-			(?, 'energy-drink', 8, ?)
+			(?, 'fish-jerky', 5, ?),
+			(?, 'nutrition-can', 1, ?),
+			(?, 'cold-medicine', 1, ?),
+			(?, 'revive-feather', 1, ?)
 		ON CONFLICT(user_id, item_id) DO NOTHING`,
-		userID, now,
 		userID, now,
 		userID, now,
 		userID, now,

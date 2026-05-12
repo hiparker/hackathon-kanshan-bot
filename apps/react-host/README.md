@@ -11,6 +11,10 @@ make run
 pnpm --filter @kanshan/react-host dev
 ```
 
+`dev` 当前等价于 `dev:vite`。后续如果新增其他 Web 版本，可以继续保留 `*:vite` 作为 Vite 版本入口。
+
+React Host 调试主页面是 `http://localhost:5173/debug`。访问根路径 `/` 时会自动跳到 `/debug`。
+
 前端会通过 Vite proxy 把本地 `/api/*` 请求转发到后端，默认地址是 `http://localhost:8787`。如需修改，在 `apps/react-host/.env.local` 里配置：
 
 ```bash
@@ -19,6 +23,34 @@ VITE_KANSHAN_AUTH_CODE=local-dev
 ```
 
 当前后端登录是 P0 mock：前端会自动把 `VITE_KANSHAN_AUTH_CODE` 当作知乎 code 调 `POST /api/auth/zhihu`，并把返回的 session token 存到 `localStorage`，后续库存、状态、任务接口都会带 `X-Session-Token`。
+
+## 静态启动
+
+先构建静态产物：
+
+```bash
+pnpm --filter @kanshan/react-host build
+```
+
+本地预览构建后的静态产物：
+
+```bash
+pnpm --filter @kanshan/react-host preview
+```
+
+也可以用一条命令构建并启动静态预览：
+
+```bash
+pnpm --filter @kanshan/react-host start:static
+```
+
+上面三个命令当前分别等价于 `build:vite`、`preview:vite` 和 `start:static:vite`。如果需要明确启动 Vite 静态版本，可以直接运行：
+
+```bash
+pnpm --filter @kanshan/react-host start:static:vite
+```
+
+预览服务默认读取 `apps/react-host/dist`，页面地址通常是 `http://localhost:4173/debug`。生产静态包会直接请求 `VITE_KANSHAN_API_BASE_URL` 指向的后端，例如 `http://localhost:8787/api/*`。如果静态服务不支持单页应用回退，需要把 `/debug` 回退到 `index.html`。
 
 ## 更换 GLB 模型
 

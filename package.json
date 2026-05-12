@@ -9,6 +9,7 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
+    "release": "node scripts/release.mjs",
     "assets:fetch": "node scripts/fetch-model-assets.mjs",
     "postinstall": "node scripts/fetch-model-assets.mjs"
   },

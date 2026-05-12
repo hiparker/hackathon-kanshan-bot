@@ -24,6 +24,7 @@ const (
 	ErrInventoryInsufficient     Error = "INVENTORY_INSUFFICIENT"
 	ErrInventoryPreconditionFail Error = "INVENTORY_PRECONDITION_FAILED"
 	ErrInventoryCooldown         Error = "INVENTORY_COOLDOWN"
+	ErrPetActionNotAllowed       Error = "PET_ACTION_NOT_ALLOWED"
 	ErrTaskNotFound              Error = "TASK_NOT_FOUND"
 	ErrInternal                  Error = "INTERNAL"
 )
@@ -33,13 +34,23 @@ const (
 // AuthSession is the result of a successful sign-in.
 type AuthSession struct {
 	UserID       string
+	ZhihuUserID  string
+	Name         string
 	SessionToken string
 	ExpiresAt    int64
+}
+
+// AuthUser is the identity shown to the client after session validation.
+type AuthUser struct {
+	UserID      string
+	ZhihuUserID string
+	Name        string
 }
 
 // AuthService handles login + session minting.
 type AuthService interface {
 	SignIn(ctx context.Context, code string) (AuthSession, error)
+	CurrentUser(ctx context.Context, userID string) (AuthUser, error)
 }
 
 // ===== Inventory =====
@@ -60,6 +71,7 @@ type InventoryItem struct {
 type UseResult struct {
 	NewState   PetSnapshot
 	ActionHint string
+	Message    string
 }
 
 // InventoryService validates use-conditions, decrements qty, applies effects.
@@ -81,17 +93,37 @@ type PetSnapshot struct {
 	Hunger     int
 	Happiness  int
 	Energy     int
+	Spirit     int
 	Health     int
 	Growth     int
 	Mood       string
 	Lifecycle  string
 	LastTickAt int64
+	ActionHint string
+	Message    string
+}
+
+type PetInteractionResult struct {
+	NewState   PetSnapshot
+	ActionHint string
+	Message    string
+}
+
+type PetDebugStateInput struct {
+	Hunger      *int
+	Happiness   *int
+	Spirit      *int
+	Health      *int
+	Lifecycle   string
+	SickDaysAgo *int
 }
 
 // PetStateService owns pet state read/tick semantics.
 type PetStateService interface {
 	Get(ctx context.Context, userID string) (PetSnapshot, error)
 	Tick(ctx context.Context, userID string) (PetSnapshot, error)
+	Interact(ctx context.Context, userID, action string) (PetInteractionResult, error)
+	DebugSetState(ctx context.Context, userID string, input PetDebugStateInput) (PetSnapshot, error)
 	// CompleteItemUse applies decay, validates precondition, runs decrement (typically
 	// inventory deduct), merges effect_json into pet, and saves. decrement is skipped
 	// if precondition fails after decay.

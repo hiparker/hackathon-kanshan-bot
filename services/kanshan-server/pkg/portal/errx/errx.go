@@ -36,6 +36,8 @@ func WriteServiceError(w http.ResponseWriter, err error, details map[string]any)
 		httpx.WriteError(w, http.StatusConflict, string(se), "item precondition not met", details)
 	case service.ErrInventoryCooldown:
 		httpx.WriteError(w, http.StatusConflict, string(se), "item is cooling down", details)
+	case service.ErrPetActionNotAllowed:
+		httpx.WriteError(w, http.StatusConflict, string(se), "pet action not allowed", details)
 	case service.ErrTaskNotFound:
 		httpx.WriteError(w, http.StatusNotFound, string(se), "task not in catalog", details)
 	default:

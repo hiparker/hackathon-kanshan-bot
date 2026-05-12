@@ -5,9 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "dev:vite": "vite --host 0.0.0.0",
     "dev:desktop": "vite --host 127.0.0.1 --port 1420 --strictPort --mode desktop",
     "build": "vite build",
+    "build:vite": "vite build",
     "build:desktop": "vite build --mode desktop",
+    "preview": "vite preview --host 0.0.0.0",
+    "preview:vite": "vite preview --host 0.0.0.0",
+    "start:static": "pnpm run start:static:vite",
+    "start:static:vite": "pnpm run build:vite && pnpm run preview:vite",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

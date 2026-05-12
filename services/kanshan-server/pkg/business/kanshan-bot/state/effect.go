@@ -19,10 +19,18 @@ func ApplyEffectJSON(p *Pet, raw string) error {
 		switch k {
 		case "hunger":
 			p.Hunger = clamp(p.Hunger + numDelta(v))
+		case "set_hunger":
+			p.Hunger = clamp(numDelta(v))
 		case "happiness":
 			p.Happiness = clamp(p.Happiness + numDelta(v))
+		case "set_happiness":
+			p.Happiness = clamp(numDelta(v))
 		case "energy":
 			p.Energy = clamp(p.Energy + numDelta(v))
+		case "spirit":
+			p.Energy = clamp(p.Energy + numDelta(v))
+		case "set_energy", "set_spirit":
+			p.Energy = clamp(numDelta(v))
 		case "health":
 			p.Health = clamp(p.Health + numDelta(v))
 		case "growth":
@@ -36,6 +44,9 @@ func ApplyEffectJSON(p *Pet, raw string) error {
 				p.Lifecycle = s
 				if s == "normal" {
 					p.SickStartedAt = nil
+				}
+				if s == "dead" {
+					p.RunawayStartedAt = nil
 				}
 			}
 		default:
