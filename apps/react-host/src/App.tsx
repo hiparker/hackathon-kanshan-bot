@@ -52,7 +52,7 @@ function resolveActionHint(actionHint: string): PetAction | null {
 
 export function App() {
   const { pathname } = useLocation();
-  const embedInPanel = pathname === '/overview';
+  const embedInPanel = pathname === '/';
   const previewRef = useRef<KanshanModelPreviewHandle | null>(null);
   const [defaultAction, setDefaultAction] = useState<PetAction>('idle');
   const [activeAction, setActiveAction] = useState<PetAction>('idle');
@@ -488,7 +488,7 @@ export function App() {
 
   return (
     <Routes>
-      <Route path="/overview" element={
+      <Route path="/" element={
         <OverviewPage
           shellClass={shellClass}
           onPlayAction={playAction}
@@ -505,7 +505,7 @@ export function App() {
         </OverviewPage>
       } />
       <Route
-        path="/"
+        path="/debug"
         element={
           <main className={shellClass}>
             {kanshanModelPreview}

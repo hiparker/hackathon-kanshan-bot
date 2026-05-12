@@ -4,30 +4,10 @@ import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import './styles.css';
 
-function Root() {
-  if (window.location.pathname === '/') {
-    window.history.replaceState(null, '', '/debug');
-  }
-
-  if (!window.location.pathname.startsWith('/debug')) {
-    return (
-      <main className="route-placeholder">
-        <h1>页面不存在</h1>
-        <p>React Host 调试页已移动到 /debug。</p>
-        <a href="/debug">打开调试页</a>
-      </main>
-    );
-  }
-
-  return (
-    <BrowserRouter basename="/debug">
-      <App />
-    </BrowserRouter>
-  );
-}
-
 createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
-    <Root />
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
   </React.StrictMode>,
 );
