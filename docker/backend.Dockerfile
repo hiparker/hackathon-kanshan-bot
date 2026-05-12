@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 FROM golang:1.22-bookworm AS builder
 
 WORKDIR /src/services/kanshan-server
@@ -10,12 +8,9 @@ RUN go mod download
 COPY services/kanshan-server ./
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/kanshan-server ./cmd/server
 
-FROM debian:bookworm-slim AS runtime
+FROM alpine:3.20 AS runtime
 
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates curl \
-  && rm -rf /var/lib/apt/lists/* \
-  && mkdir -p /data/kanshan-sql
+RUN mkdir -p /data/kanshan-sql
 
 WORKDIR /app
 COPY --from=builder /out/kanshan-server /app/kanshan-server
