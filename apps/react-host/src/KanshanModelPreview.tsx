@@ -304,6 +304,7 @@ interface KanshanModelPreviewProps {
   rewardToast: KanshanRewardToast;
   modelUrl: string;
   needsLogin?: boolean;
+  ownerName?: string;
   propItems: KanshanPropItem[];
   taskItems: KanshanTaskItem[];
   onActionEnd?: (action: PetAction) => void;
@@ -332,6 +333,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     rewardToast,
     modelUrl,
     needsLogin = false,
+    ownerName,
     propItems,
     taskItems,
     dialogueText,
@@ -1046,6 +1048,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
             <span>{modelLoadStatus === 'error' ? '请刷新页面重试。' : '首次加载文件较大，请稍等。'}</span>
           </div>
         ) : null}
+        {ownerName ? <p className="stage-owner-label">{ownerName}的刘看山</p> : null}
         <p className="stage-credit">基于@刘看山 二创</p>
         <BubbleDialogue
           actionDialogueText={actionDialogueText}

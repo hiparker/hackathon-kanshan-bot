@@ -329,7 +329,7 @@ button[aria-disabled="true"]:hover {
 .stage-credit {
   position: absolute;
   left: 50%;
-  bottom: 50px;
+  bottom: 47px;
   z-index: 2;
   margin: 0;
   font-size: 10px;
@@ -1641,7 +1641,7 @@ body.kanshan-desktop-mode .glb-stage--desktop .glb-canvas {
 }
 
 body.kanshan-desktop-mode .glb-stage--desktop .stage-credit {
-  bottom: 48px;
+  bottom: 45px;
   z-index: 2;
 }
 
@@ -1945,7 +1945,7 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
 }
 
 .glb-stage .stage-credit {
-  bottom: 48px;
+  bottom: 45px;
 }
 
 .glb-stage .direction-drag-handle {

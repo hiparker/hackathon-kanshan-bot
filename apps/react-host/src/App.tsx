@@ -24,6 +24,7 @@ import {
   storeKanshanSession,
   useKanshanProp,
   type KanshanDefaultState,
+  type KanshanCurrentUser,
   type KanshanPropItem,
   type KanshanTaskItem,
 } from './kanshanMenuData';
@@ -81,6 +82,7 @@ export function App() {
   const [taskItems, setTaskItems] = useState<KanshanTaskItem[]>([]);
   const [menuDataStatus, setMenuDataStatus] = useState<MenuDataStatus>('idle');
   const [authStatus, setAuthStatus] = useState<AuthStatus>(() => (SHOULD_REQUIRE_AUTH ? 'checking' : 'authenticated'));
+  const [currentUser, setCurrentUser] = useState<KanshanCurrentUser | null>(() => getStoredKanshanUser());
   const [rewardToast, setRewardToast] = useState<RewardToast>(null);
   const [chatInput, setChatInput] = useState('');
   const [chatText, setChatText] = useState('');
@@ -121,7 +123,9 @@ export function App() {
 
   useEffect(() => {
     const redirectedUser = consumeKanshanAuthRedirect();
-    if (redirectedUser || getStoredKanshanUser()) {
+    const storedUser = getStoredKanshanUser();
+    if (redirectedUser || storedUser) {
+      setCurrentUser(redirectedUser || storedUser);
       setAuthStatus('authenticated');
       return;
     }
@@ -136,6 +140,7 @@ export function App() {
       .then((user) => {
         if (!isCurrent) return;
         if (user) {
+          setCurrentUser(user);
           setAuthStatus('authenticated');
           return;
         }
@@ -154,7 +159,7 @@ export function App() {
   useEffect(() => {
     const handleAuthMessage = (event: MessageEvent<KanshanAuthMessage>) => {
       if (event.data?.type !== 'kanshan:auth' || !event.data.session) return;
-      storeKanshanSession(event.data.session);
+      setCurrentUser(storeKanshanSession(event.data.session));
       setAuthStatus('authenticated');
     };
 
@@ -171,7 +176,9 @@ export function App() {
     const consumeDesktopAuthURL = (url: string | null | undefined) => {
       if (!url) return;
       console.info('[kanshan] desktop auth callback received', url);
-      if (consumeKanshanDesktopAuthURL(url)) {
+      const user = consumeKanshanDesktopAuthURL(url);
+      if (user) {
+        setCurrentUser(user);
         setAuthStatus('authenticated');
       } else {
         console.warn('[kanshan] desktop auth callback ignored', url);
@@ -586,6 +593,7 @@ export function App() {
       rewardToast={rewardToast}
       modelUrl={kanshanModelConfig.url}
       needsLogin={authStatus !== 'authenticated'}
+      ownerName={currentUser?.name}
       propItems={propItems}
       taskItems={taskItems}
       onActionEnd={handleActionEnd}
