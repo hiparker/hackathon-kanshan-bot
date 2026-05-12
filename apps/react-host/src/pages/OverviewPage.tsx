@@ -115,10 +115,15 @@ export function OverviewPage({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const options = [
-    { label: 'Mac 版 (Apple Silicon)', ext: '.dmg' },
-    { label: 'Mac 版 (Intel)', ext: '.dmg' },
-    { label: 'Windows 版', ext: '.exe' },
+    { label: 'Mac 版 (Apple Silicon)', ext: '.dmg', url: 'https://github.com/hiparker/hackathon-kanshan-bot/releases/' },
+    { label: 'Mac 版 (Intel)', ext: '.dmg', url: 'https://github.com/hiparker/hackathon-kanshan-bot/releases/' },
+    { label: 'Windows 版', ext: '.exe', url: 'https://github.com/hiparker/hackathon-kanshan-bot/releases/' },
   ];
+
+  const getSelectedUrl = () => {
+    const option = options.find(o => o.label === selected);
+    return option?.url || '';
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -163,6 +168,7 @@ export function OverviewPage({
                       onClick={() => {
                         setSelected(option.label);
                         setIsOpen(false);
+                        window.open(option.url, '_blank', 'noopener,noreferrer');
                       }}
                     >
                       <span className="dropdown-item-check">
@@ -175,10 +181,16 @@ export function OverviewPage({
                 </div>
               )}
             </div>
-            <button type="button" className="overview-btn overview-btn--secondary">
+            <a
+              href="https://github.com/hiparker/hackathon-kanshan-bot"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="overview-btn overview-btn--secondary"
+              style={{ textDecoration: 'none' }}
+            >
               <IconGithub />
               <span>在 GitHub 上查看</span>
-            </button>
+            </a>
           </div>
         </header>
 
