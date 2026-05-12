@@ -38,12 +38,18 @@ pnpm assets:fetch
 pnpm assets:compress:web
 ```
 
-默认压缩策略是把贴图限制到 `1024` 并转成 `webp`。这会降低首屏下载体积，骨骼、动画和模型结构保持不变。
+默认压缩策略是把贴图限制到 `1024`，不转换贴图格式。这样优先保证材质兼容性，骨骼、动画和模型结构保持不变。
 
 如需更小体积，可以压到 `512`：
 
 ```bash
 pnpm assets:compress:web -- --texture-size=512
+```
+
+如需显式尝试 WebP，可以传 `--texture-format=webp`。如果模型显示异常，恢复默认 `none`：
+
+```bash
+pnpm assets:compress:web -- --texture-size=1024 --texture-format=webp
 ```
 
 如需指定输入输出：

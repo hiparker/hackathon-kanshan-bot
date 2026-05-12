@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const args = process.argv.slice(2);
+const args = process.argv.slice(2).filter((arg) => arg !== '--');
 
 function readOption(name, fallback) {
   const prefix = `--${name}=`;
@@ -20,7 +20,7 @@ const input = resolve(rootDir, readOption('input', 'assets/model/kanshan-model-v
 const output = resolve(rootDir, readOption('output', 'assets/model/kanshan-model-v5-web.glb'));
 const backup = resolve(rootDir, readOption('backup', 'assets/model/kanshan-model-v5.original.glb'));
 const textureSize = readOption('texture-size', '1024');
-const textureFormat = readOption('texture-format', 'webp');
+const textureFormat = readOption('texture-format', 'none');
 const useMeshopt = hasFlag('meshopt');
 const noBackup = hasFlag('no-backup');
 
@@ -45,9 +45,11 @@ const commandArgs = [
   tempOutput,
   '--texture-size',
   textureSize,
-  '--texture-compress',
-  textureFormat,
 ];
+
+if (textureFormat !== 'none' && textureFormat !== 'false') {
+  commandArgs.push('--texture-compress', textureFormat);
+}
 
 if (useMeshopt) {
   commandArgs.push('--compress', 'meshopt');
@@ -64,7 +66,7 @@ const result = spawnSync('npx', commandArgs, {
   stdio: 'inherit',
   env: {
     ...process.env,
-    npm_config_registry: process.env.npm_config_registry || 'https://registry.npmmirror.com',
+    npm_config_registry: process.env.npm_config_registry || 'https://registry.npmjs.org',
   },
 });
 
