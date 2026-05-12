@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -103,6 +104,7 @@ type zhihuUserInfoResponse struct {
 	ID          string `json:"id"`
 	OpenID      string `json:"openid"`
 	UserID      string `json:"user_id"`
+	UID         int64  `json:"uid"`
 	ZhihuUserID string `json:"zhihu_user_id"`
 	Name        string `json:"name"`
 	FullName    string `json:"fullname"`
@@ -123,7 +125,7 @@ func (s *authService) resolveZhihuProfile(ctx context.Context, code string) (zhi
 	if err != nil {
 		return zhihuOAuthProfile{}, err
 	}
-	zhihuID := firstNonEmpty(info.ZhihuUserID, info.UserID, info.OpenID, info.ID, token.UserID, token.OpenID, token.ID)
+	zhihuID := firstNonEmpty(info.ZhihuUserID, info.UserID, info.OpenID, info.ID, formatIntID(info.UID), token.UserID, token.OpenID, token.ID)
 	if zhihuID == "" {
 		return zhihuOAuthProfile{}, service.ErrInternal
 	}
@@ -145,7 +147,7 @@ func loadOAuthConfig() oauthConfig {
 		clientSecret: os.Getenv("ZHIHU_OAUTH_CLIENT_SECRET"),
 		redirectURI:  os.Getenv("ZHIHU_OAUTH_REDIRECT_URI"),
 		tokenURL:     envOr("ZHIHU_OAUTH_TOKEN_URL", "https://openapi.zhihu.com/access_token"),
-		userInfoURL:  envOr("ZHIHU_OAUTH_USER_INFO_URL", "https://www.zhihu.com/oauth/userinfo"),
+		userInfoURL:  envOr("ZHIHU_OAUTH_USER_INFO_URL", "https://openapi.zhihu.com/user"),
 	}
 }
 
@@ -232,6 +234,13 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func formatIntID(value int64) string {
+	if value == 0 {
+		return ""
+	}
+	return strconv.FormatInt(value, 10)
 }
 
 func displayName(name, fallbackID string) string {
