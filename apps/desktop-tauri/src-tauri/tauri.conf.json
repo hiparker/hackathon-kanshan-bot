@@ -48,5 +48,15 @@
       "icons/icon.png"
     ],
     "category": "Utility"
+  },
+  "plugins": {
+    "deep-link": {
+      "mobile": [],
+      "desktop": {
+        "schemes": [
+          "kanshan"
+        ]
+      }
+    }
   }
 }

@@ -1,5 +1,8 @@
 #![allow(unexpected_cfgs)]
 
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -11,6 +14,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager, PhysicalPosition, WebviewWindow, WindowEvent,
 };
+use tauri_plugin_deep_link::DeepLinkExt;
 
 const DESKTOP_STAGE_SIZE: f64 = 300.0;
 const DESKTOP_WINDOW_WIDTH: f64 = 540.0;
@@ -21,6 +25,8 @@ const DRAG_FOLLOW_POLL_MS: u64 = 4;
 const DRAG_MONITOR_REFRESH_MS: u64 = 500;
 
 struct DragState(Mutex<DragInner>);
+
+struct AuthCallbackState(Mutex<Option<String>>);
 
 struct DragInner {
     snap_edge: &'static str,
@@ -78,7 +84,14 @@ impl Default for DragInner {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            for arg in args {
+                handle_auth_callback_url(app, &arg);
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .manage(DragState(Mutex::new(DragInner::default())))
+        .manage(AuthCallbackState(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             kanshan_set_snap_edge,
             kanshan_set_stage_position,
@@ -87,10 +100,12 @@ pub fn run() {
             kanshan_begin_window_drag,
             kanshan_end_window_drag,
             kanshan_clamp_window_into_view,
-            kanshan_open_external_url
+            kanshan_open_external_url,
+            kanshan_take_auth_callback_url
         ])
         .setup(|app| {
             configure_macos_app(app.handle());
+            configure_deep_links(app.handle());
 
             let show_hide = MenuItem::with_id(app, "show_hide", "显示/隐藏", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
@@ -138,6 +153,59 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running kanshan desktop");
+}
+
+fn configure_deep_links(app: &tauri::AppHandle) {
+    let app_handle = app.clone();
+    app.deep_link().on_open_url(move |event| {
+        log_auth_callback("deep-link on_open_url");
+        for url in event.urls() {
+            handle_auth_callback_url(&app_handle, &url.to_string());
+        }
+    });
+}
+
+fn handle_auth_callback_url(app: &tauri::AppHandle, url: &str) {
+    log_auth_callback(&format!("callback candidate: {url}"));
+
+    if !url.starts_with("kanshan://auth") {
+        log_auth_callback("ignored non-auth url");
+        return;
+    }
+
+    if let Some(state) = app.try_state::<AuthCallbackState>() {
+        *state.0.lock().unwrap() = Some(url.to_string());
+    }
+
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+        let _ = window.emit("kanshan://auth-callback", url.to_string());
+        log_auth_callback("emitted auth callback to main window");
+    } else {
+        log_auth_callback("main window not found; cached auth callback only");
+    }
+}
+
+fn log_auth_callback(message: &str) {
+    let Some(home) = std::env::var_os("HOME") else {
+        return;
+    };
+
+    let mut path = PathBuf::from(home);
+    path.push("Library");
+    path.push("Logs");
+    path.push("kanshan-desktop-auth.log");
+
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+        let _ = writeln!(file, "{message}");
+    }
+}
+
+#[tauri::command]
+fn kanshan_take_auth_callback_url(app: tauri::AppHandle) -> Option<String> {
+    app.try_state::<AuthCallbackState>()
+        .and_then(|state| state.0.lock().unwrap().take())
 }
 
 #[tauri::command]

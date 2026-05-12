@@ -8,6 +8,11 @@ const isDesktopBuild = args.includes('--mode') && args[args.indexOf('--mode') + 
 const envLocalPath = resolve(import.meta.dirname, '../apps/react-host/.env.local');
 const hiddenEnvLocalPath = `${envLocalPath}.desktop-build-ignore`;
 let envLocalHidden = false;
+const buildEnv = {
+  ...process.env,
+  VITE_KANSHAN_AUTH_MODE: process.env.VITE_KANSHAN_AUTH_MODE || 'oauth',
+  VITE_KANSHAN_API_BASE_URL: process.env.VITE_KANSHAN_API_BASE_URL || 'https://kanshan.bedebug.com',
+};
 
 try {
   if (isDesktopBuild && existsSync(envLocalPath)) {
@@ -20,6 +25,7 @@ try {
 
   const result = spawnSync('vite', ['build', ...args], {
     cwd: resolve(import.meta.dirname, '../apps/react-host'),
+    env: buildEnv,
     stdio: 'inherit',
   });
 

@@ -143,13 +143,15 @@ func (h *Handler) zhihuCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{Name: "kanshan_return_to", Value: "", Path: "/api/auth/zhihu", MaxAge: -1, HttpOnly: true})
 
-	writeAuthCallbackHTML(w, zhihuResponse{
+	response := zhihuResponse{
 		UserID:       sess.UserID,
 		ZhihuUserID:  sess.ZhihuUserID,
 		Name:         sess.Name,
 		SessionToken: sess.SessionToken,
 		ExpiresAt:    sess.ExpiresAt,
-	}, returnTo)
+	}
+
+	writeAuthCallbackHTML(w, response, returnTo)
 }
 
 func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
@@ -211,12 +213,21 @@ func decodeOAuthState(state string) string {
 	return string(data)
 }
 
+func isDesktopAuthReturnTo(returnTo string) bool {
+	parsed, err := url.Parse(returnTo)
+	return err == nil && parsed.Scheme == "kanshan" && parsed.Host == "auth"
+}
+
 func writeAuthCallbackHTML(w http.ResponseWriter, sess zhihuResponse, returnTo string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	escapedName := html.EscapeString(sess.Name)
 	returnToJSON := "null"
 	if strings.TrimSpace(returnTo) != "" {
 		returnToJSON = mustJSON(returnTo)
+	}
+	isDesktopJSON := "false"
+	if isDesktopAuthReturnTo(returnTo) {
+		isDesktopJSON = "true"
 	}
 	fmt.Fprintf(w, `<!doctype html>
 <meta charset="utf-8">
@@ -228,25 +239,35 @@ main{padding:28px;border:2px solid #17202a;border-radius:24px;background:#fffaf0
 <main>
   <h1>登录成功</h1>
   <p>%s 的刘看山已准备好。</p>
-  <p>正在返回刘看山。</p>
+  <p id="hint">正在返回刘看山。</p>
 </main>
 <script>
 const payload = %s;
 const returnTo = %s;
+const isDesktop = %s;
 try {
   window.opener && window.opener.postMessage({ type: 'kanshan:auth', session: payload }, '*');
 } catch (_) {}
 try {
   localStorage.setItem('kanshan.session', JSON.stringify(payload));
 } catch (_) {}
-if (returnTo) {
+if (isDesktop) {
+  document.getElementById('hint').textContent = '请回到刘看山应用，登录状态会自动同步。';
+  const url = new URL(returnTo);
+  const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(payload))))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  url.searchParams.set('session', encoded);
+  window.location.replace(url.toString());
+} else if (returnTo) {
   const url = new URL(returnTo, window.location.origin);
   url.searchParams.set('kanshan_auth', btoa(unescape(encodeURIComponent(JSON.stringify(payload)))));
   window.location.replace(url.toString());
 } else {
   setTimeout(() => window.close(), 800);
 }
-</script>`, escapedName, mustJSON(sess), returnToJSON)
+</script>`, escapedName, mustJSON(sess), returnToJSON, isDesktopJSON)
 }
 
 func mustJSON(v any) string {

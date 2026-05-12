@@ -207,10 +207,26 @@ export function getStoredKanshanUser(): KanshanCurrentUser | null {
 
 export function consumeKanshanAuthRedirect(): KanshanCurrentUser | null {
   const encodedSession = new URLSearchParams(window.location.search).get('kanshan_auth');
+  return consumeEncodedKanshanSession(encodedSession);
+}
+
+export function consumeKanshanDesktopAuthURL(rawUrl: string): KanshanCurrentUser | null {
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== 'kanshan:' || url.hostname !== 'auth') return null;
+    return consumeEncodedKanshanSession(url.searchParams.get('session') || url.searchParams.get('kanshan_auth'));
+  } catch {
+    return null;
+  }
+}
+
+function consumeEncodedKanshanSession(encodedSession: string | null): KanshanCurrentUser | null {
   if (!encodedSession) return null;
 
   try {
-    const json = decodeURIComponent(escape(window.atob(encodedSession)));
+    const normalizedSession = encodedSession.replace(/-/g, '+').replace(/_/g, '/');
+    const paddedSession = normalizedSession.padEnd(Math.ceil(normalizedSession.length / 4) * 4, '=');
+    const json = decodeURIComponent(escape(window.atob(paddedSession)));
     const session = JSON.parse(json) as AuthResponse;
     const user = storeKanshanSession(session);
     const url = new URL(window.location.href);
@@ -243,13 +259,22 @@ export async function startZhihuLogin() {
   }
 
   const loginUrl = new URL(`${API_PREFIX}/auth/zhihu/login`, window.location.origin);
-  loginUrl.searchParams.set('return_to', window.location.origin);
+  loginUrl.searchParams.set('return_to', IS_DESKTOP_MODE ? 'kanshan://auth' : window.location.origin);
 
+  if (IS_DESKTOP_MODE) {
+    await openLoginInDefaultBrowser(loginUrl.toString());
+    return;
+  }
+
+  window.open(loginUrl.toString(), 'kanshan-zhihu-login', 'width=520,height=720,noopener=false,noreferrer=false');
+}
+
+async function openLoginInDefaultBrowser(url: string) {
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('kanshan_open_external_url', { url: loginUrl.toString() });
+    await invoke('kanshan_open_external_url', { url });
   } catch {
-    window.open(loginUrl.toString(), 'kanshan-zhihu-login', 'width=520,height=720,noopener=false,noreferrer=false');
+    window.open(url, '_blank', 'noopener,noreferrer');
   }
 }
 

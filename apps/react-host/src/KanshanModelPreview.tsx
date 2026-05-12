@@ -303,10 +303,12 @@ interface KanshanModelPreviewProps {
   menuDataStatus: 'idle' | 'loading' | 'ready' | 'error';
   rewardToast: KanshanRewardToast;
   modelUrl: string;
+  needsLogin?: boolean;
   propItems: KanshanPropItem[];
   taskItems: KanshanTaskItem[];
   onActionEnd?: (action: PetAction) => void;
   onClipNamesChange?: (clipNames: string[]) => void;
+  onLogin?: () => void;
   onPatStart: () => void;
   onPatEnd: () => void;
   onRetryMenuData: () => void;
@@ -329,12 +331,14 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     menuDataStatus,
     rewardToast,
     modelUrl,
+    needsLogin = false,
     propItems,
     taskItems,
     dialogueText,
     isDialogueStreaming = false,
     onActionEnd,
     onClipNamesChange,
+    onLogin,
     onPatStart,
     onPatEnd,
     onRetryMenuData,
@@ -1055,29 +1059,43 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
           onChatDialoguePageIndexChange={setChatDialoguePageIndex}
           snapEdge={snapEdge}
         />
-        <KanshanHoverMenu
-          chatInput={chatInput}
-          activeMenuItem={activeMenuItem}
-          isActive={isMenuActive}
-          onChatFocusChange={setIsChatFocused}
-          onMenuHoverChange={setIsMenuHovered}
-          isDialogueStreaming={isDialogueStreaming}
-          onActiveMenuItemChange={setActiveMenuItem}
-          onOpenPanelChange={setOpenPanel}
-          openPanel={openPanel}
-          placement={menuPlacement}
-          menuDataStatus={menuDataStatus}
-          rewardToast={rewardToast}
-          propItems={propItems}
-          taskItems={taskItems}
-          onPat={playPatAction}
-          onRetryMenuData={onRetryMenuData}
-          onSelectProp={onSelectProp}
-          onSelectTask={onSelectTask}
-          onChatInputChange={onChatInputChange}
-          onChatInputKeyDown={onChatInputKeyDown}
-          onChatSubmit={onChatSubmit}
-        />
+        {needsLogin ? (
+          <div
+            className="pet-hover-menu pet-hover-menu--login is-active"
+            aria-label="刘看山登录"
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <div className="pet-menu-actions pet-login-panel">
+              <button className="pet-login-button" type="button" onClick={onLogin}>
+                登录知乎
+              </button>
+            </div>
+          </div>
+        ) : (
+          <KanshanHoverMenu
+            chatInput={chatInput}
+            activeMenuItem={activeMenuItem}
+            isActive={isMenuActive}
+            onChatFocusChange={setIsChatFocused}
+            onMenuHoverChange={setIsMenuHovered}
+            isDialogueStreaming={isDialogueStreaming}
+            onActiveMenuItemChange={setActiveMenuItem}
+            onOpenPanelChange={setOpenPanel}
+            openPanel={openPanel}
+            placement={menuPlacement}
+            menuDataStatus={menuDataStatus}
+            rewardToast={rewardToast}
+            propItems={propItems}
+            taskItems={taskItems}
+            onPat={playPatAction}
+            onRetryMenuData={onRetryMenuData}
+            onSelectProp={onSelectProp}
+            onSelectTask={onSelectTask}
+            onChatInputChange={onChatInputChange}
+            onChatInputKeyDown={onChatInputKeyDown}
+            onChatSubmit={onChatSubmit}
+          />
+        )}
         <button
           className="direction-drag-handle"
           type="button"

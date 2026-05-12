@@ -11,6 +11,7 @@ import {
 } from './kanshanActionConfig';
 import {
   consumeKanshanAuthRedirect,
+  consumeKanshanDesktopAuthURL,
   fetchKanshanDefaultState,
   fetchKanshanProps,
   fetchKanshanTasks,
@@ -19,7 +20,8 @@ import {
   isKanshanOAuthMode,
   petSnapshotToDefaultState,
   progressKanshanTask,
-  redirectToZhihuLogin,
+  startZhihuLogin,
+  storeKanshanSession,
   useKanshanProp,
   type KanshanDefaultState,
   type KanshanPropItem,
@@ -36,7 +38,7 @@ import {
 import { streamChat } from './chatService';
 
 type MenuDataStatus = 'idle' | 'loading' | 'ready' | 'error';
-type AuthStatus = 'checking' | 'authenticated' | 'redirecting';
+type AuthStatus = 'checking' | 'authenticated' | 'unauthenticated' | 'redirecting';
 type RewardToast = KanshanRewardToast;
 type DialogueSource = 'chat' | 'market';
 
@@ -47,6 +49,12 @@ const CHAT_TYPING_BATCH_SIZE = 2;
 const CHAT_MARKET_DIALOGUE_COOLDOWN_MS = 15000;
 const MARKET_DIALOGUE_VISIBLE_MS = 13000;
 const IS_DESKTOP_MODE = import.meta.env.MODE === 'desktop' || import.meta.env.VITE_KANSHAN_DESKTOP === 'true';
+const SHOULD_REQUIRE_AUTH = isKanshanOAuthMode();
+
+interface KanshanAuthMessage {
+  type?: string;
+  session?: Parameters<typeof storeKanshanSession>[0];
+}
 
 function resolveActionHint(actionHint: string): PetAction | null {
   if (actionHint === 'happy-temporary') return 'happy';
@@ -72,7 +80,7 @@ export function App() {
   const [propItems, setPropItems] = useState<KanshanPropItem[]>([]);
   const [taskItems, setTaskItems] = useState<KanshanTaskItem[]>([]);
   const [menuDataStatus, setMenuDataStatus] = useState<MenuDataStatus>('idle');
-  const [authStatus, setAuthStatus] = useState<AuthStatus>(() => (IS_DESKTOP_MODE ? 'authenticated' : 'checking'));
+  const [authStatus, setAuthStatus] = useState<AuthStatus>(() => (SHOULD_REQUIRE_AUTH ? 'checking' : 'authenticated'));
   const [rewardToast, setRewardToast] = useState<RewardToast>(null);
   const [chatInput, setChatInput] = useState('');
   const [chatText, setChatText] = useState('');
@@ -112,15 +120,13 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (IS_DESKTOP_MODE) return;
-
     const redirectedUser = consumeKanshanAuthRedirect();
     if (redirectedUser || getStoredKanshanUser()) {
       setAuthStatus('authenticated');
       return;
     }
 
-    if (!isKanshanOAuthMode()) {
+    if (!SHOULD_REQUIRE_AUTH) {
       setAuthStatus('authenticated');
       return;
     }
@@ -133,18 +139,82 @@ export function App() {
           setAuthStatus('authenticated');
           return;
         }
-        setAuthStatus('redirecting');
-        redirectToZhihuLogin(window.location.href);
+        setAuthStatus('unauthenticated');
       })
       .catch(() => {
         if (!isCurrent) return;
-        setAuthStatus('redirecting');
-        redirectToZhihuLogin(window.location.href);
+        setAuthStatus('unauthenticated');
       });
 
     return () => {
       isCurrent = false;
     };
+  }, []);
+
+  useEffect(() => {
+    const handleAuthMessage = (event: MessageEvent<KanshanAuthMessage>) => {
+      if (event.data?.type !== 'kanshan:auth' || !event.data.session) return;
+      storeKanshanSession(event.data.session);
+      setAuthStatus('authenticated');
+    };
+
+    window.addEventListener('message', handleAuthMessage);
+    return () => window.removeEventListener('message', handleAuthMessage);
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let isDisposed = false;
+
+    if (!IS_DESKTOP_MODE) return undefined;
+
+    const consumeDesktopAuthURL = (url: string | null | undefined) => {
+      if (!url) return;
+      console.info('[kanshan] desktop auth callback received', url);
+      if (consumeKanshanDesktopAuthURL(url)) {
+        setAuthStatus('authenticated');
+      } else {
+        console.warn('[kanshan] desktop auth callback ignored', url);
+      }
+    };
+
+    void Promise.all([import('@tauri-apps/api/event'), import('@tauri-apps/api/core'), import('@tauri-apps/plugin-deep-link')])
+      .then(async ([eventApi, coreApi, deepLinkApi]) => {
+        const dispose = await eventApi.listen<string>('kanshan://auth-callback', ({ payload }) => {
+          consumeDesktopAuthURL(payload);
+        });
+
+        const pendingURL = await coreApi.invoke<string | null>('kanshan_take_auth_callback_url');
+        consumeDesktopAuthURL(pendingURL);
+
+        const currentURLs = await deepLinkApi.getCurrent();
+        currentURLs?.forEach(consumeDesktopAuthURL);
+
+        const disposeDeepLink = await deepLinkApi.onOpenUrl((urls) => {
+          urls.forEach(consumeDesktopAuthURL);
+        });
+
+        if (isDisposed) {
+          dispose();
+          disposeDeepLink();
+          return;
+        }
+        unlisten = () => {
+          dispose();
+          disposeDeepLink();
+        };
+      })
+      .catch(() => {});
+
+    return () => {
+      isDisposed = true;
+      unlisten?.();
+    };
+  }, []);
+
+  const handleLogin = useCallback(() => {
+    setAuthStatus('redirecting');
+    void startZhihuLogin().catch(() => setAuthStatus('unauthenticated'));
   }, []);
 
   useEffect(() => {
@@ -287,12 +357,12 @@ export function App() {
   }, [applyDefaultState]);
 
   useEffect(() => {
-    if (!IS_DESKTOP_MODE && authStatus !== 'authenticated') return;
+    if (authStatus !== 'authenticated') return;
     return loadMenuData();
   }, [authStatus, loadMenuData]);
 
   useEffect(() => {
-    if (IS_DESKTOP_MODE || authStatus === 'authenticated') scheduleDefaultStatePoll();
+    if (authStatus === 'authenticated') scheduleDefaultStatePoll();
     return () => {
       chatAbortControllerRef.current?.abort();
       clearChatDisplayTimer();
@@ -498,18 +568,6 @@ export function App() {
   const resolvedDialogueText = dialogueSource === 'market' ? marketDialogueText : chatText;
   const resolvedIsDialogueStreaming = dialogueSource === 'chat' && isSending;
 
-  if (!IS_DESKTOP_MODE && authStatus !== 'authenticated') {
-    return (
-      <main className="web-auth-loading" role="status" aria-live="polite">
-        <div className="web-auth-loading__card">
-          <span className="model-loading-spinner" aria-hidden="true" />
-          <h1>{authStatus === 'redirecting' ? '正在前往知乎登录' : '正在确认登录状态'}</h1>
-          <p>登录后会自动回到刘看山，并同步你的状态、道具和任务。</p>
-        </div>
-      </main>
-    );
-  }
-
   const kanshanModelPreview = (
     <KanshanModelPreview
       embedInPanel={embedInPanel}
@@ -527,12 +585,14 @@ export function App() {
       menuDataStatus={menuDataStatus}
       rewardToast={rewardToast}
       modelUrl={kanshanModelConfig.url}
+      needsLogin={authStatus !== 'authenticated'}
       propItems={propItems}
       taskItems={taskItems}
       onActionEnd={handleActionEnd}
       onPatStart={handleTemporaryActionStart}
       onPatEnd={playDefaultAction}
       onClipNamesChange={setClipNames}
+      onLogin={handleLogin}
       onRetryMenuData={loadMenuData}
       onSelectProp={handleSelectProp}
       onSelectTask={handleSelectTask}

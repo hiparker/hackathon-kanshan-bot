@@ -23,6 +23,8 @@ pnpm --filter @kanshan/desktop-tauri dev
 pnpm --filter @kanshan/desktop-tauri build
 ```
 
+打包时默认注入 `VITE_KANSHAN_AUTH_MODE=oauth` 和 `VITE_KANSHAN_API_BASE_URL=https://kanshan.bedebug.com`。开发命令仍走本地 dev 配置。
+
 构建产物默认在 `<cargo target>/release/bundle/macos/刘看山.app`，仓库脚本会同步拷贝到 `apps/desktop-tauri/dist/刘看山.app`，双击即可运行。
 
 > macOS 透明窗口依赖 `macos-private-api` 特性 + `app.macOSPrivateApi: true`，缺一会出现白底。
