@@ -2,6 +2,9 @@ FROM golang:1.22-bookworm AS builder
 
 WORKDIR /src/services/kanshan-server
 
+ENV GOPROXY=https://goproxy.cn,direct
+ENV GOSUMDB=sum.golang.google.cn
+
 COPY services/kanshan-server/go.mod services/kanshan-server/go.sum ./
 RUN go mod download
 
