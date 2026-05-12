@@ -348,6 +348,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     const runtimeRef = useRef<KanshanRuntimeBridge | null>(null);
     const playbackModeRef = useRef<'semantic' | 'raw'>('semantic');
     const dialogueTimerRef = useRef<number | null>(null);
+    const [modelLoadStatus, setModelLoadStatus] = useState<'loading' | 'ready' | 'error'>('loading');
     const stageHoverGraceTimerRef = useRef<number | null>(null);
     const dialogueHoverGraceTimerRef = useRef<number | null>(null);
     const desktopWindowDragRef = useRef<DesktopWindowDragState | null>(null);
@@ -643,6 +644,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
       if (!canvas) return;
 
       onClipNamesChange?.([]);
+      setModelLoadStatus('loading');
       const runtime = createKanshanThreeRuntime({ canvas, clipMap: kanshanClipMap, materialMode: 'pbr', modelUrl });
       runtimeRef.current = runtime;
       playbackModeRef.current = 'semantic';
@@ -660,6 +662,8 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
         }
       };
       const unsubscribe = runtime.onEvent((event) => {
+        if (event.type === 'animationClipMapReady') setModelLoadStatus('ready');
+        if (event.type === 'error' && event.code === 'MODEL_LOAD_FAILED') setModelLoadStatus('error');
         if (event.type === 'actionEnd') onActionEnd?.(event.action);
         if (event.type === 'animationClipStart') showClipDialogue(event.clipName, event.durationMs);
         if (event.type === 'rawClipStart') showClipDialogue(event.clipName, event.durationMs);
@@ -1029,6 +1033,13 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
           ref={canvasRef}
           className="glb-canvas"
         />
+        {!desktopMode && modelLoadStatus !== 'ready' ? (
+          <div className={`model-loading-overlay model-loading-overlay--${modelLoadStatus}`} role="status" aria-live="polite">
+            <span className="model-loading-spinner" aria-hidden="true" />
+            <strong>{modelLoadStatus === 'error' ? '模型加载失败' : '正在加载看山模型'}</strong>
+            <span>{modelLoadStatus === 'error' ? '请刷新页面重试。' : '首次加载文件较大，请稍等。'}</span>
+          </div>
+        ) : null}
         <p className="stage-credit">基于@刘看山 二创</p>
         <BubbleDialogue
           actionDialogueText={actionDialogueText}

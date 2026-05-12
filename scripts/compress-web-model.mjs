@@ -23,6 +23,7 @@ const textureSize = readOption('texture-size', '1024');
 const textureFormat = readOption('texture-format', 'none');
 const useMeshopt = hasFlag('meshopt');
 const noBackup = hasFlag('no-backup');
+const copyOnly = hasFlag('copy-only');
 
 if (!existsSync(input)) {
   console.error(`[model:compress] input not found: ${input}`);
@@ -31,6 +32,12 @@ if (!existsSync(input)) {
 }
 
 mkdirSync(dirname(output), { recursive: true });
+
+if (copyOnly) {
+  copyFileSync(input, output);
+  console.log('[model:compress] copy only:', relativeSize(output));
+  process.exit(0);
+}
 
 if (input === output && !noBackup && !existsSync(backup)) {
   copyFileSync(input, backup);
