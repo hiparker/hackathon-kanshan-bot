@@ -277,6 +277,8 @@ function paginateDialogueByHeight(text: string, shell: HTMLElement | null, lines
 }
 
 interface KanshanModelPreviewProps {
+  /** 嵌入仪表盘等固定区域时：舞台在容器内居中，不随视口吸附与拖拽 */
+  embedInPanel?: boolean;
   chatError: string;
   chatInput: string;
   desktopMode?: boolean;
@@ -304,6 +306,7 @@ interface KanshanModelPreviewProps {
 
 export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, KanshanModelPreviewProps>(
   function KanshanModelPreview({
+    embedInPanel = false,
     actionRevision,
     activeAction,
     chatInput,
@@ -346,7 +349,9 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     const stageDragRef = useRef<{ pointerId: number; startClientX: number; startClientY: number; startPosition: StagePosition } | null>(null);
     const patClipNameRef = useRef(resolveKanshanClipName('Idle'));
     const directionDragRef = useRef<{ startX: number; startYaw: number; yaw: number } | null>(null);
-    const [stagePosition, setStagePosition] = useState<StagePosition>(() => getDefaultStagePosition());
+    const [stagePosition, setStagePosition] = useState<StagePosition>(() =>
+      embedInPanel ? { x: 0, y: 0 } : getDefaultStagePosition(),
+    );
     const [snapEdge, setSnapEdge] = useState<PetSnapEdge>('right');
     const [desktopMenuPlacement, setDesktopMenuPlacement] = useState<PetMenuPlacement>('left');
     const [isStageDragging, setIsStageDragging] = useState(false);
@@ -396,7 +401,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     useEffect(() => clearDialogueHoverGraceTimer, []);
 
     useEffect(() => {
-      if (desktopMode) return;
+      if (desktopMode || embedInPanel) return;
 
       const handleWindowResize = () => {
         setStagePosition((current) => resolveSnappedPosition(snapEdge, clampStagePosition(current)));
@@ -404,7 +409,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
 
       window.addEventListener('resize', handleWindowResize);
       return () => window.removeEventListener('resize', handleWindowResize);
-    }, [desktopMode, snapEdge]);
+    }, [desktopMode, embedInPanel, snapEdge]);
 
     useEffect(() => {
       if (!desktopMode) return;
@@ -775,6 +780,8 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
         return;
       }
 
+      if (embedInPanel) return;
+
       event.currentTarget.setPointerCapture(event.pointerId);
       stageDragRef.current = {
         pointerId: event.pointerId,
@@ -972,10 +979,16 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     return (
       <section
         ref={stageRef}
-        className={`glb-stage${desktopMode ? ' glb-stage--desktop' : ''}${isStageDragging ? ' is-dragging' : ''}`}
+        className={`glb-stage${desktopMode ? ' glb-stage--desktop' : ''}${embedInPanel && !desktopMode ? ' glb-stage--embedded' : ''}${isStageDragging ? ' is-dragging' : ''}`}
         data-snap-edge={desktopMode ? snapEdge : undefined}
         aria-label="刘看山 GLB 模型 Three.js 预览"
-        style={desktopMode ? desktopStageStyle : { left: stagePosition.x, top: stagePosition.y }}
+        style={
+          desktopMode
+            ? desktopStageStyle
+            : embedInPanel
+              ? undefined
+              : { left: stagePosition.x, top: stagePosition.y }
+        }
         onPointerDown={handleStageDragStart}
         onPointerMove={handleStageDragMove}
         onPointerUp={handleStageDragEnd}
