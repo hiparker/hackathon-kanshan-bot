@@ -24,6 +24,12 @@ VITE_KANSHAN_AUTH_CODE=local-dev
 
 当前后端登录是 P0 mock：前端会自动把 `VITE_KANSHAN_AUTH_CODE` 当作知乎 code 调 `POST /api/auth/zhihu`，并把返回的 session token 存到 `localStorage`，后续库存、状态、任务接口都会带 `X-Session-Token`。
 
+生产 Web 默认使用知乎 OAuth 登录。首次打开页面时，如果本地没有有效 session，会跳到 `GET /api/auth/zhihu/login`；登录成功后回到原页面，并同步刘看山状态、道具和任务。开发环境如需保持 mock 登录，可继续设置：
+
+```bash
+VITE_KANSHAN_AUTH_MODE=mock
+```
+
 ## 静态启动
 
 先构建静态产物：

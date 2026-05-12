@@ -112,13 +112,18 @@ func (h *Handler) zhihuCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	returnTo := strings.TrimSpace(r.URL.Query().Get("return_to"))
+	if returnTo == "" {
+		returnTo = decodeOAuthState(r.URL.Query().Get("state"))
+	}
+
 	writeAuthCallbackHTML(w, zhihuResponse{
 		UserID:       sess.UserID,
 		ZhihuUserID:  sess.ZhihuUserID,
 		Name:         sess.Name,
 		SessionToken: sess.SessionToken,
 		ExpiresAt:    sess.ExpiresAt,
-	})
+	}, returnTo)
 }
 
 func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
@@ -160,9 +165,24 @@ func buildAuthorizeURL(returnTo string) (string, error) {
 	return parsed.String(), nil
 }
 
-func writeAuthCallbackHTML(w http.ResponseWriter, sess zhihuResponse) {
+func decodeOAuthState(state string) string {
+	if state == "" {
+		return ""
+	}
+	data, err := base64.RawURLEncoding.DecodeString(state)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func writeAuthCallbackHTML(w http.ResponseWriter, sess zhihuResponse, returnTo string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	escapedName := html.EscapeString(sess.Name)
+	returnToJSON := "null"
+	if strings.TrimSpace(returnTo) != "" {
+		returnToJSON = mustJSON(returnTo)
+	}
 	fmt.Fprintf(w, `<!doctype html>
 <meta charset="utf-8">
 <title>刘看山登录成功</title>
@@ -173,18 +193,25 @@ main{padding:28px;border:2px solid #17202a;border-radius:24px;background:#fffaf0
 <main>
   <h1>登录成功</h1>
   <p>%s 的刘看山已准备好。</p>
-  <p>可以关闭这个窗口，回到刘看山。</p>
+  <p>正在返回刘看山。</p>
 </main>
 <script>
 const payload = %s;
+const returnTo = %s;
 try {
   window.opener && window.opener.postMessage({ type: 'kanshan:auth', session: payload }, '*');
 } catch (_) {}
 try {
   localStorage.setItem('kanshan.session', JSON.stringify(payload));
 } catch (_) {}
-setTimeout(() => window.close(), 800);
-</script>`, escapedName, mustJSON(sess))
+if (returnTo) {
+  const url = new URL(returnTo, window.location.origin);
+  url.searchParams.set('kanshan_auth', btoa(unescape(encodeURIComponent(JSON.stringify(payload)))));
+  window.location.replace(url.toString());
+} else {
+  setTimeout(() => window.close(), 800);
+}
+</script>`, escapedName, mustJSON(sess), returnToJSON)
 }
 
 func mustJSON(v any) string {

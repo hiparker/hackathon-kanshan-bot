@@ -174,8 +174,10 @@ const DEFAULT_API_BASE_URL = import.meta.env.PROD ? 'https://kanshan.bedebug.com
 const CONFIGURED_API_BASE_URL = import.meta.env.VITE_KANSHAN_API_BASE_URL || DEFAULT_API_BASE_URL;
 const API_PREFIX = import.meta.env.PROD ? `${CONFIGURED_API_BASE_URL.replace(/\/$/, '')}/api` : '/api';
 const AUTH_STORAGE_KEY = 'kanshan.session';
-const AUTH_MODE = import.meta.env.VITE_KANSHAN_AUTH_MODE || 'mock';
+const AUTH_MODE = import.meta.env.VITE_KANSHAN_AUTH_MODE || (import.meta.env.PROD ? 'oauth' : 'mock');
 const DEV_AUTH_CODE = import.meta.env.VITE_KANSHAN_AUTH_CODE || 'local-dev';
+const IS_DESKTOP_MODE = import.meta.env.MODE === 'desktop' || import.meta.env.VITE_KANSHAN_DESKTOP === 'true';
+const DESKTOP_SESSION_TOKEN = import.meta.env.VITE_KANSHAN_DESKTOP_SESSION_TOKEN || 's_u_local-dev';
 const TASK_PERIODS = ['daily', 'weekly', 'story', 'challenge'] as const;
 
 function readStoredSession(): AuthResponse | null {
@@ -203,6 +205,28 @@ export function getStoredKanshanUser(): KanshanCurrentUser | null {
   return session ? authResponseToUser(session) : null;
 }
 
+export function consumeKanshanAuthRedirect(): KanshanCurrentUser | null {
+  const encodedSession = new URLSearchParams(window.location.search).get('kanshan_auth');
+  if (!encodedSession) return null;
+
+  try {
+    const json = decodeURIComponent(escape(window.atob(encodedSession)));
+    const session = JSON.parse(json) as AuthResponse;
+    const user = storeKanshanSession(session);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('kanshan_auth');
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    return user;
+  } catch {
+    signOutKanshan();
+    return null;
+  }
+}
+
+export function isKanshanOAuthMode(): boolean {
+  return AUTH_MODE === 'oauth';
+}
+
 export async function startZhihuLogin() {
   if (AUTH_MODE !== 'oauth') {
     const response = await fetch(`${API_PREFIX}/auth/zhihu`, {
@@ -227,6 +251,12 @@ export async function startZhihuLogin() {
   } catch {
     window.open(loginUrl.toString(), 'kanshan-zhihu-login', 'width=520,height=720,noopener=false,noreferrer=false');
   }
+}
+
+export function redirectToZhihuLogin(returnTo = window.location.href) {
+  const loginUrl = new URL(`${API_PREFIX}/auth/zhihu/login`, window.location.origin);
+  loginUrl.searchParams.set('return_to', returnTo);
+  window.location.assign(loginUrl.toString());
 }
 
 export function storeKanshanSession(session: AuthResponse): KanshanCurrentUser {
@@ -261,6 +291,7 @@ export async function fetchCurrentKanshanUser(): Promise<KanshanCurrentUser | nu
 async function getSessionToken(): Promise<string> {
   const storedSession = readStoredSession();
   if (storedSession) return storedSession.session_token;
+  if (IS_DESKTOP_MODE) return DESKTOP_SESSION_TOKEN;
   throw new KanshanAuthError();
 }
 

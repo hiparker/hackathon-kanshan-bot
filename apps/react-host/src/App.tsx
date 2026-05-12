@@ -10,11 +10,16 @@ import {
   previewActionGroups,
 } from './kanshanActionConfig';
 import {
+  consumeKanshanAuthRedirect,
   fetchKanshanDefaultState,
   fetchKanshanProps,
   fetchKanshanTasks,
+  fetchCurrentKanshanUser,
+  getStoredKanshanUser,
+  isKanshanOAuthMode,
   petSnapshotToDefaultState,
   progressKanshanTask,
+  redirectToZhihuLogin,
   useKanshanProp,
   type KanshanDefaultState,
   type KanshanPropItem,
@@ -31,6 +36,7 @@ import {
 import { streamChat } from './chatService';
 
 type MenuDataStatus = 'idle' | 'loading' | 'ready' | 'error';
+type AuthStatus = 'checking' | 'authenticated' | 'redirecting';
 type RewardToast = KanshanRewardToast;
 type DialogueSource = 'chat' | 'market';
 
@@ -66,6 +72,7 @@ export function App() {
   const [propItems, setPropItems] = useState<KanshanPropItem[]>([]);
   const [taskItems, setTaskItems] = useState<KanshanTaskItem[]>([]);
   const [menuDataStatus, setMenuDataStatus] = useState<MenuDataStatus>('idle');
+  const [authStatus, setAuthStatus] = useState<AuthStatus>(() => (IS_DESKTOP_MODE ? 'authenticated' : 'checking'));
   const [rewardToast, setRewardToast] = useState<RewardToast>(null);
   const [chatInput, setChatInput] = useState('');
   const [chatText, setChatText] = useState('');
@@ -101,6 +108,42 @@ export function App() {
     return () => {
       document.documentElement.classList.remove('kanshan-desktop-mode');
       document.body.classList.remove('kanshan-desktop-mode');
+    };
+  }, []);
+
+  useEffect(() => {
+    if (IS_DESKTOP_MODE) return;
+
+    const redirectedUser = consumeKanshanAuthRedirect();
+    if (redirectedUser || getStoredKanshanUser()) {
+      setAuthStatus('authenticated');
+      return;
+    }
+
+    if (!isKanshanOAuthMode()) {
+      setAuthStatus('authenticated');
+      return;
+    }
+
+    let isCurrent = true;
+    fetchCurrentKanshanUser()
+      .then((user) => {
+        if (!isCurrent) return;
+        if (user) {
+          setAuthStatus('authenticated');
+          return;
+        }
+        setAuthStatus('redirecting');
+        redirectToZhihuLogin(window.location.href);
+      })
+      .catch(() => {
+        if (!isCurrent) return;
+        setAuthStatus('redirecting');
+        redirectToZhihuLogin(window.location.href);
+      });
+
+    return () => {
+      isCurrent = false;
     };
   }, []);
 
@@ -227,17 +270,15 @@ export function App() {
     let isCurrent = true;
 
     setMenuDataStatus('loading');
-    Promise.all([fetchKanshanProps(), fetchKanshanTasks(), fetchKanshanDefaultState()])
-      .then(([nextPropItems, nextTaskItems, nextDefaultState]) => {
+    Promise.allSettled([fetchKanshanProps(), fetchKanshanTasks(), fetchKanshanDefaultState()])
+      .then(([propsResult, tasksResult, defaultStateResult]) => {
         if (!isCurrent) return;
-        setPropItems(nextPropItems);
-        setTaskItems(nextTaskItems);
-        applyDefaultState(nextDefaultState);
-        setMenuDataStatus('ready');
-      })
-      .catch(() => {
-        if (!isCurrent) return;
-        setMenuDataStatus('error');
+
+        if (propsResult.status === 'fulfilled') setPropItems(propsResult.value);
+        if (tasksResult.status === 'fulfilled') setTaskItems(tasksResult.value);
+        if (defaultStateResult.status === 'fulfilled') applyDefaultState(defaultStateResult.value);
+
+        setMenuDataStatus(propsResult.status === 'fulfilled' || tasksResult.status === 'fulfilled' ? 'ready' : 'error');
       });
 
     return () => {
@@ -245,10 +286,13 @@ export function App() {
     };
   }, [applyDefaultState]);
 
-  useEffect(() => loadMenuData(), [loadMenuData]);
+  useEffect(() => {
+    if (!IS_DESKTOP_MODE && authStatus !== 'authenticated') return;
+    return loadMenuData();
+  }, [authStatus, loadMenuData]);
 
   useEffect(() => {
-    scheduleDefaultStatePoll();
+    if (IS_DESKTOP_MODE || authStatus === 'authenticated') scheduleDefaultStatePoll();
     return () => {
       chatAbortControllerRef.current?.abort();
       clearChatDisplayTimer();
@@ -256,7 +300,7 @@ export function App() {
       clearMarketDialogueTimer();
       clearTemporaryFallbackTimer();
     };
-  }, [clearChatDisplayTimer, clearDefaultStateTimer, clearMarketDialogueTimer, clearTemporaryFallbackTimer, scheduleDefaultStatePoll]);
+  }, [authStatus, clearChatDisplayTimer, clearDefaultStateTimer, clearMarketDialogueTimer, clearTemporaryFallbackTimer, scheduleDefaultStatePoll]);
 
   const playAction = useCallback((action: PetAction) => {
     const meta = kanshanActionMeta[action];
@@ -453,6 +497,18 @@ export function App() {
   const shellClass = IS_DESKTOP_MODE ? 'glb-shell glb-shell--desktop' : 'glb-shell';
   const resolvedDialogueText = dialogueSource === 'market' ? marketDialogueText : chatText;
   const resolvedIsDialogueStreaming = dialogueSource === 'chat' && isSending;
+
+  if (!IS_DESKTOP_MODE && authStatus !== 'authenticated') {
+    return (
+      <main className="web-auth-loading" role="status" aria-live="polite">
+        <div className="web-auth-loading__card">
+          <span className="model-loading-spinner" aria-hidden="true" />
+          <h1>{authStatus === 'redirecting' ? '正在前往知乎登录' : '正在确认登录状态'}</h1>
+          <p>登录后会自动回到刘看山，并同步你的状态、道具和任务。</p>
+        </div>
+      </main>
+    );
+  }
 
   const kanshanModelPreview = (
     <KanshanModelPreview
