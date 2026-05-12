@@ -96,13 +96,28 @@ func (h *Handler) zhihuLogin(w http.ResponseWriter, r *http.Request) {
 		errx.WriteServiceError(w, service.ErrInternal, nil)
 		return
 	}
+	if returnTo := strings.TrimSpace(r.URL.Query().Get("return_to")); returnTo != "" {
+		http.SetCookie(w, &http.Cookie{
+			Name:     "kanshan_return_to",
+			Value:    url.QueryEscape(returnTo),
+			Path:     "/api/auth/zhihu",
+			MaxAge:   600,
+			Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+		})
+	}
 	http.Redirect(w, r, authURL, http.StatusFound)
 }
 
 func (h *Handler) zhihuCallback(w http.ResponseWriter, r *http.Request) {
-	code := strings.TrimSpace(r.URL.Query().Get("code"))
+	code := firstNonEmpty(
+		r.URL.Query().Get("code"),
+		r.URL.Query().Get("authorization_code"),
+		r.URL.Query().Get("auth_code"),
+	)
 	if code == "" {
-		httpx.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "missing oauth code", nil)
+		httpx.WriteError(w, http.StatusBadRequest, "BAD_REQUEST", "missing oauth code", map[string]any{"query": r.URL.RawQuery})
 		return
 	}
 
@@ -116,6 +131,14 @@ func (h *Handler) zhihuCallback(w http.ResponseWriter, r *http.Request) {
 	if returnTo == "" {
 		returnTo = decodeOAuthState(r.URL.Query().Get("state"))
 	}
+	if returnTo == "" {
+		if cookie, err := r.Cookie("kanshan_return_to"); err == nil {
+			if decoded, err := url.QueryUnescape(cookie.Value); err == nil {
+				returnTo = decoded
+			}
+		}
+	}
+	http.SetCookie(w, &http.Cookie{Name: "kanshan_return_to", Value: "", Path: "/api/auth/zhihu", MaxAge: -1, HttpOnly: true})
 
 	writeAuthCallbackHTML(w, zhihuResponse{
 		UserID:       sess.UserID,
@@ -163,6 +186,15 @@ func buildAuthorizeURL(returnTo string) (string, error) {
 	}
 	parsed.RawQuery = values.Encode()
 	return parsed.String(), nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func decodeOAuthState(state string) string {
