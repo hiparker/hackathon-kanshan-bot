@@ -12,6 +12,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+.tool-versions
 
 *.log
 npm-debug.log*

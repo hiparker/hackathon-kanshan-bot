@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import type { PetAction } from '@kanshan/bridge';
 import {
   kanshanActionMeta,
@@ -21,6 +22,7 @@ import {
 } from './kanshanMenuData';
 import { kanshanModelConfig } from './kanshanModelConfig';
 import { KanshanModelPreview, type KanshanModelPreviewHandle, type KanshanRewardToast } from './KanshanModelPreview';
+import { OverviewPage } from './pages/OverviewPage';
 import { streamChat } from './chatService';
 
 type MenuDataStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -41,6 +43,8 @@ function resolveActionHint(actionHint: string): PetAction | null {
 }
 
 export function App() {
+  const { pathname } = useLocation();
+  const embedInPanel = pathname === '/overview';
   const previewRef = useRef<KanshanModelPreviewHandle | null>(null);
   const [defaultAction, setDefaultAction] = useState<PetAction>('idle');
   const [activeAction, setActiveAction] = useState<PetAction>('idle');
@@ -382,102 +386,138 @@ export function App() {
     void submitChat();
   }, [submitChat]);
 
+  const shellClass = IS_DESKTOP_MODE ? 'glb-shell glb-shell--desktop' : 'glb-shell';
+
+  const kanshanModelPreview = (
+    <KanshanModelPreview
+      embedInPanel={embedInPanel}
+      chatError={chatError}
+      chatInput={chatInput}
+      desktopMode={IS_DESKTOP_MODE}
+      dialogueText={chatText}
+      isDialogueStreaming={isSending}
+      lastUserMessage={lastUserMessage}
+      ref={previewRef}
+      actionRevision={actionRevision}
+      activeAction={activeAction}
+      menuDataStatus={menuDataStatus}
+      rewardToast={rewardToast}
+      modelUrl={kanshanModelConfig.url}
+      propItems={propItems}
+      taskItems={taskItems}
+      onActionEnd={handleActionEnd}
+      onPatStart={handleTemporaryActionStart}
+      onPatEnd={playDefaultAction}
+      onClipNamesChange={setClipNames}
+      onRetryMenuData={loadMenuData}
+      onSelectProp={handleSelectProp}
+      onSelectTask={handleSelectTask}
+      onChatInputChange={setChatInput}
+      onChatInputKeyDown={handleChatInputKeyDown}
+      onChatSubmit={() => void submitChat()}
+    />
+  );
+
   return (
-    <main className={IS_DESKTOP_MODE ? 'glb-shell glb-shell--desktop' : 'glb-shell'}>
-      <KanshanModelPreview
-        chatError={chatError}
-        chatInput={chatInput}
-        desktopMode={IS_DESKTOP_MODE}
-        dialogueText={chatText}
-        isDialogueStreaming={isSending}
-        lastUserMessage={lastUserMessage}
-        ref={previewRef}
-        actionRevision={actionRevision}
-        activeAction={activeAction}
-        menuDataStatus={menuDataStatus}
-        rewardToast={rewardToast}
-        modelUrl={kanshanModelConfig.url}
-        propItems={propItems}
-        taskItems={taskItems}
-        onActionEnd={handleActionEnd}
-        onPatStart={handleTemporaryActionStart}
-        onPatEnd={playDefaultAction}
-        onClipNamesChange={setClipNames}
-        onRetryMenuData={loadMenuData}
-        onSelectProp={handleSelectProp}
-        onSelectTask={handleSelectTask}
-        onChatInputChange={setChatInput}
-        onChatInputKeyDown={handleChatInputKeyDown}
-        onChatSubmit={() => void submitChat()}
-      />
-      {!IS_DESKTOP_MODE ? (
-      <section className="glb-main-panel">
-        <p className="eyebrow">Three.js GLB Preview</p>
-        <h1>模型和动作都由配置控制。</h1>
-        <p>
-          当前页面加载 <code>{kanshanModelConfig.fileName}</code>。语义动作走配置映射，原始 clip 面板直接播放 GLB 内动画。
-        </p>
-        <section className="preview-panel">
-          <h2>语义动作</h2>
-          {previewActionGroups.map((group) => (
-            <section key={group.title} className="action-group">
-              <h3>{group.title}</h3>
-              <div className="glb-actions" aria-label={group.title}>
-                {group.actions.map((item) => {
-                  const disabled = (isDead && item.action !== 'revive') || Boolean(item.onlyWhenDead && !isDead);
-                  return (
-                    <button
-                      key={item.action}
-                      className={item.action === activeAction ? 'is-active' : ''}
-                      disabled={disabled}
-                      type="button"
-                      onClick={() => playAction(item.action)}
-                    >
-                      {item.label}
-                      <span className="action-strategy" role="tooltip">
-                        {item.duration} · {item.repetitions ? item.repetitions + '轮' : item.loop ? '循环' : '单次'} · {item.clips.map(formatKanshanActionClip).join(' / ')}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
-          <p className="state-note">当前状态：<code>{isDead ? '死亡，只允许复活' : activeAction}</code></p>
-          {missingSemanticClipNames.length > 0 ? (
-            <p className="state-note">未映射语义 clip：<code>{missingSemanticClipNames.join(' / ')}</code></p>
-          ) : null}
-        </section>
-        <section className="preview-panel">
-          <h2>语义 clip 对照</h2>
-          <p className="clip-note">按钮显示语义 clip。点击后通过映射表播放真实 GLB clip。</p>
-          <div className="raw-clip-list" aria-label="原始 GLB clip">
-            {clipNames.length === 0 ? (
-              <span>等待 GLB clip 列表。</span>
-            ) : (
-              semanticClipRows.map((item, index) => {
-                const hasRawClip = rawClipNameSet.has(item.rawClipName);
-                return (
-                  <div key={item.semanticClipName} className="raw-clip-row">
-                    <span className="raw-clip-index">{index}</span>
-                    <button
-                      type="button"
-                      title={item.note}
-                      disabled={!hasRawClip}
-                      onClick={() => playRawClip(item.rawClipName)}
-                    >
-                      {item.semanticClipName}
-                      {item.note ? <small>{item.note}</small> : null}
-                    </button>
-                    <code>{item.semanticClipName} =&gt; {hasRawClip ? item.rawClipName : '缺失'}</code>
+    <Routes>
+      <Route path="/overview" element={
+        <OverviewPage
+          shellClass={shellClass}
+          onPlayAction={playAction}
+          chatInput={chatInput}
+          onChatInputChange={setChatInput}
+          onChatSubmit={() => void submitChat()}
+          onChatInputKeyDown={handleChatInputKeyDown}
+          isSending={isSending}
+          chatText={chatText}
+          lastUserMessage={lastUserMessage}
+          chatError={chatError}
+        >
+          {kanshanModelPreview}
+        </OverviewPage>
+      } />
+      <Route
+        path="/"
+        element={
+          <main className={shellClass}>
+            {kanshanModelPreview}
+            {!IS_DESKTOP_MODE ? (
+              <section className="glb-main-panel">
+                <p className="eyebrow">Three.js GLB Preview</p>
+                <h1>模型和动作都由配置控制。</h1>
+                <p>
+                  当前页面加载 <code>{kanshanModelConfig.fileName}</code>。语义动作走配置映射，原始 clip 面板直接播放 GLB 内动画。
+                </p>
+                <section className="preview-panel">
+                  <h2>语义动作</h2>
+                  {previewActionGroups.map((group) => (
+                    <section key={group.title} className="action-group">
+                      <h3>{group.title}</h3>
+                      <div className="glb-actions" aria-label={group.title}>
+                        {group.actions.map((item) => {
+                          const disabled = (isDead && item.action !== 'revive') || Boolean(item.onlyWhenDead && !isDead);
+                          return (
+                            <button
+                              key={item.action}
+                              className={item.action === activeAction ? 'is-active' : ''}
+                              disabled={disabled}
+                              type="button"
+                              onClick={() => playAction(item.action)}
+                            >
+                              {item.label}
+                              <span className="action-strategy" role="tooltip">
+                                {item.duration} · {item.repetitions ? item.repetitions + '轮' : item.loop ? '循环' : '单次'} ·{' '}
+                                {item.clips.map(formatKanshanActionClip).join(' / ')}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ))}
+                  <p className="state-note">
+                    当前状态：<code>{isDead ? '死亡，只允许复活' : activeAction}</code>
+                  </p>
+                  {missingSemanticClipNames.length > 0 ? (
+                    <p className="state-note">未映射语义 clip：<code>{missingSemanticClipNames.join(' / ')}</code></p>
+                  ) : null}
+                </section>
+                <section className="preview-panel">
+                  <h2>语义 clip 对照</h2>
+                  <p className="clip-note">按钮显示语义 clip。点击后通过映射表播放真实 GLB clip。</p>
+                  <div className="raw-clip-list" aria-label="原始 GLB clip">
+                    {clipNames.length === 0 ? (
+                      <span>等待 GLB clip 列表。</span>
+                    ) : (
+                      semanticClipRows.map((item, index) => {
+                        const hasRawClip = rawClipNameSet.has(item.rawClipName);
+                        return (
+                          <div key={item.semanticClipName} className="raw-clip-row">
+                            <span className="raw-clip-index">{index}</span>
+                            <button
+                              type="button"
+                              title={item.note}
+                              disabled={!hasRawClip}
+                              onClick={() => playRawClip(item.rawClipName)}
+                            >
+                              {item.semanticClipName}
+                              {item.note ? <small>{item.note}</small> : null}
+                            </button>
+                            <code>
+                              {item.semanticClipName} =&gt; {hasRawClip ? item.rawClipName : '缺失'}
+                            </code>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
-                );
-              })
-            )}
-          </div>
-        </section>
-      </section>
-      ) : null}
-    </main>
+                </section>
+              </section>
+            ) : null}
+          </main>
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
