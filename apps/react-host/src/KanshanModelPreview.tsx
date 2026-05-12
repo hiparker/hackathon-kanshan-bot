@@ -45,6 +45,15 @@ const INTERACTION_GRACE_MS = 420;
 const ZHIDA_AI_URL = 'https://zhida.ai/';
 const CHAT_DIALOGUE_EMPTY_TEXT = '和我说点什么吧，我会在这里回应你。';
 
+async function openExternalUrl(url: string) {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('kanshan_open_external_url', { url });
+  } catch {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+}
+
 function isInDesktopWindowDragBand(clientX: number, clientY: number, stageRect: DOMRectReadOnly) {
   const lx = clientX - stageRect.left;
   const ly = clientY - stageRect.top;
@@ -282,6 +291,8 @@ interface KanshanModelPreviewProps {
   chatError: string;
   chatInput: string;
   desktopMode?: boolean;
+  dialogueLinkUrl?: string;
+  dialogueSource?: 'chat' | 'market';
   dialogueText?: string;
   isDialogueStreaming?: boolean;
   lastUserMessage: string;
@@ -311,6 +322,8 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     activeAction,
     chatInput,
     desktopMode = false,
+    dialogueLinkUrl,
+    dialogueSource = 'chat',
     menuDataStatus,
     rewardToast,
     modelUrl,
@@ -680,8 +693,14 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     );
     const isMenuActive = isStageHovered || isMenuHovered;
     const hasChatDialogue = chatDialogueText.length > 0 || isDialogueStreaming;
+    const hasAmbientDialogue = dialogueSource === 'market' && chatDialogueText.length > 0;
     const isChatPanelActive = activeMenuItem === 'chat' || openPanel === 'chat' || isChatFocused;
-    const shouldShowChatBubble = isChatPanelActive || isDialogueHovered || isDialogueStreaming || (!actionDialogueText && hasChatDialogue);
+    const shouldShowChatBubble =
+      hasAmbientDialogue
+      || isChatPanelActive
+      || isDialogueHovered
+      || isDialogueStreaming
+      || (!actionDialogueText && hasChatDialogue);
     const bubbleMode: BubbleMode = shouldShowChatBubble ? 'chat' : 'action';
 
     useEffect(() => {
@@ -1017,6 +1036,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
           chatDialoguePageIndex={chatDialoguePageIndex}
           chatDialoguePages={chatDialoguePages}
           chatShellRef={chatShellRef}
+          dialogueLinkUrl={dialogueLinkUrl}
           isDialogueStreaming={isDialogueStreaming}
           onDialogueHoverChange={handleDialogueHoverChange}
           onChatDialoguePageIndexChange={setChatDialoguePageIndex}
@@ -1071,6 +1091,7 @@ interface BubbleDialogueProps {
   chatDialoguePageIndex: number;
   chatDialoguePages: string[];
   chatShellRef: React.MutableRefObject<HTMLDivElement | null>;
+  dialogueLinkUrl?: string;
   isDialogueStreaming: boolean;
   onChatDialoguePageIndexChange: React.Dispatch<React.SetStateAction<number>>;
   onDialogueHoverChange: (hovered: boolean) => void;
@@ -1083,6 +1104,7 @@ function BubbleDialogue({
   chatDialoguePageIndex,
   chatDialoguePages,
   chatShellRef,
+  dialogueLinkUrl,
   isDialogueStreaming,
   onChatDialoguePageIndexChange,
   onDialogueHoverChange,
@@ -1118,6 +1140,19 @@ function BubbleDialogue({
               <button type="button" disabled={!canPageUp} onClick={() => onChatDialoguePageIndexChange((current: number) => Math.max(0, current - 1))}>↑</button>
               <button type="button" disabled={!canPageDown} onClick={() => onChatDialoguePageIndexChange((current: number) => Math.min(chatDialoguePages.length - 1, current + 1))}>↓</button>
             </div>
+          ) : null}
+          {dialogueLinkUrl ? (
+            <button
+              type="button"
+              className="pet-dialogue-link"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void openExternalUrl(dialogueLinkUrl);
+              }}
+            >
+              查看原文
+            </button>
           ) : null}
         </div>
       ) : resolvedDialogueText ? (
@@ -1220,14 +1255,7 @@ function KanshanHoverMenu({
   const handleZhidaLinkClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    void (async () => {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('kanshan_open_external_url', { url: ZHIDA_AI_URL });
-      } catch {
-        window.open(ZHIDA_AI_URL, '_blank', 'noopener,noreferrer');
-      }
-    })();
+    void openExternalUrl(ZHIDA_AI_URL);
   };
 
   const closeMenuForPointerLeave = () => {

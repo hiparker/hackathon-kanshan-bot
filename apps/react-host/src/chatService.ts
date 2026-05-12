@@ -21,7 +21,7 @@ interface OpenAiStreamChunk {
 }
 
 const IS_DESKTOP_PROD = import.meta.env.MODE === 'desktop' && import.meta.env.PROD;
-const OPENAI_BASE_URL = import.meta.env.VITE_OPENAI_BASE_URL?.replace(/\/$/, '') ?? '';
+const OPENAI_BASE_URL = (import.meta.env.VITE_OPENAI_BASE_URL?.replace(/\/$/, '') || 'https://api.openai.com/v1');
 const CHAT_COMPLETIONS_URL = IS_DESKTOP_PROD && OPENAI_BASE_URL
   ? `${OPENAI_BASE_URL}/chat/completions`
   : '/proxy-openai/chat/completions';
