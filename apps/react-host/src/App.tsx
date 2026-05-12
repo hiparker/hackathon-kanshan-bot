@@ -20,6 +20,7 @@ import {
   isKanshanOAuthMode,
   petSnapshotToDefaultState,
   progressKanshanTask,
+  signOutKanshan,
   startZhihuLogin,
   storeKanshanSession,
   useKanshanProp,
@@ -115,7 +116,11 @@ export function App() {
     document.documentElement.classList.add('kanshan-desktop-mode');
     document.body.classList.add('kanshan-desktop-mode');
 
+    const preventContextMenu = (event: MouseEvent) => event.preventDefault();
+    window.addEventListener('contextmenu', preventContextMenu);
+
     return () => {
+      window.removeEventListener('contextmenu', preventContextMenu);
       document.documentElement.classList.remove('kanshan-desktop-mode');
       document.body.classList.remove('kanshan-desktop-mode');
     };
@@ -216,6 +221,36 @@ export function App() {
     return () => {
       isDisposed = true;
       unlisten?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    let unlistenSignOut: (() => void) | null = null;
+    let isDisposed = false;
+
+    if (!IS_DESKTOP_MODE) return undefined;
+
+    void import('@tauri-apps/api/event')
+      .then(async (eventApi) => {
+        const disposeSignOut = await eventApi.listen('kanshan://sign-out', () => {
+          signOutKanshan();
+          setCurrentUser(null);
+          setAuthStatus(SHOULD_REQUIRE_AUTH ? 'unauthenticated' : 'authenticated');
+          setPropItems([]);
+          setTaskItems([]);
+          setMenuDataStatus('idle');
+        });
+        if (isDisposed) {
+          disposeSignOut();
+          return;
+        }
+        unlistenSignOut = disposeSignOut;
+      })
+      .catch(() => {});
+
+    return () => {
+      isDisposed = true;
+      unlistenSignOut?.();
     };
   }, []);
 

@@ -12,7 +12,7 @@ use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager, PhysicalPosition, WebviewWindow, WindowEvent,
+    Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
 };
 use tauri_plugin_deep_link::DeepLinkExt;
 
@@ -108,8 +108,10 @@ pub fn run() {
             configure_deep_links(app.handle());
 
             let show_hide = MenuItem::with_id(app, "show_hide", "显示/隐藏", true, None::<&str>)?;
+            let sign_out = MenuItem::with_id(app, "sign_out", "注销登录", true, None::<&str>)?;
+            let about = MenuItem::with_id(app, "about", "关于", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_hide, &quit])?;
+            let menu = Menu::with_items(app, &[&show_hide, &sign_out, &about, &quit])?;
 
             let _tray = TrayIconBuilder::with_id("kanshan-tray")
                 .tooltip("刘看山")
@@ -118,6 +120,8 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show_hide" => toggle_main_window(app),
+                    "sign_out" => emit_main_window_event(app, "kanshan://sign-out"),
+                    "about" => show_about_window(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -163,6 +167,44 @@ fn configure_deep_links(app: &tauri::AppHandle) {
             handle_auth_callback_url(&app_handle, &url.to_string());
         }
     });
+}
+
+fn emit_main_window_event(app: &tauri::AppHandle, event: &str) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+        let _ = window.emit(event, ());
+    }
+}
+
+fn show_about_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("about") {
+        let _ = window.show();
+        let _ = window.set_focus();
+        return;
+    }
+
+    let _ = WebviewWindowBuilder::new(app, "about", WebviewUrl::App("about.html".into()))
+        .title("关于今天开始和刘看山同居")
+        .inner_size(480.0, 360.0)
+        .min_inner_size(420.0, 320.0)
+        .maximizable(false)
+        .minimizable(false)
+        .resizable(false)
+        .center()
+        .on_navigation(|url| {
+            if is_about_external_link(url.as_str()) {
+                let _ = open_external_url(url.as_str());
+                return false;
+            }
+            true
+        })
+        .build();
+}
+
+fn is_about_external_link(url: &str) -> bool {
+    url == "https://github.com/hiparker/hackathon-kanshan-bot"
+        || url == "https://www.zhihu.com/hackathon/project/23"
 }
 
 fn handle_auth_callback_url(app: &tauri::AppHandle, url: &str) {
@@ -283,6 +325,10 @@ fn kanshan_open_external_url(url: String) -> Result<(), String> {
         return Err("unsupported external url".into());
     }
 
+    open_external_url(&url)
+}
+
+fn open_external_url(url: &str) -> Result<(), String> {
     let result = if cfg!(target_os = "macos") {
         Command::new("open").arg(&url).spawn()
     } else if cfg!(target_os = "windows") {

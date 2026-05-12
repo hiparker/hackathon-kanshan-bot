@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>关于</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #fff;
+      color: rgba(0, 0, 0, 0.88);
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      padding: 24px;
+    }
+    .content {
+      flex: 1;
+      min-height: 0;
+    }
+    p {
+      margin: 0 0 14px;
+      color: rgba(0, 0, 0, 0.72);
+      font-size: 14px;
+      line-height: 1.75;
+    }
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding-top: 16px;
+      border-top: 1px solid #f0f0f0;
+    }
+    a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 88px;
+      height: 32px;
+      border: 1px solid #d9d9d9;
+      border-radius: 6px;
+      background: #fff;
+      color: rgba(0, 0, 0, 0.88);
+      font-size: 14px;
+      line-height: 1;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+    a:hover {
+      border-color: #4096ff;
+      color: #4096ff;
+    }
+    a.primary {
+      border-color: #1677ff;
+      background: #1677ff;
+      color: #fff;
+      box-shadow: 0 2px 0 rgba(5, 145, 255, 0.1);
+    }
+    a.primary:hover {
+      border-color: #4096ff;
+      background: #4096ff;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <section class="content" aria-label="应用说明">
+    <p>今天开始和刘看山同居」是一款桌面端 AI 电子宠物。它陪你工作，提醒喝水、专注和休息，也会把知乎上的优质内容主动推到你眼前。</p>
+    <p>我们希望它能成为一个懂你的桌面搭子，也帮你看见更多不同观点。</p>
+    <p>感谢队友高铖、周鹏程、赵禹、焦健的共同努力。</p>
+  </section>
+  <div class="actions">
+    <a href="https://github.com/hiparker/hackathon-kanshan-bot">Github</a>
+    <a class="primary" href="https://www.zhihu.com/hackathon/project/23">去点赞</a>
+  </div>
+</body>
+</html>
