@@ -198,23 +198,27 @@ export function OverviewPage({
           <div className="overview-main">
             <section className="overview-card overview-card--intro">
               <h2 className="overview-card__title">项目简介</h2>
-              <p className="overview-card__text">
-                桌面版刘看山宠物养成不仅是一款娱乐产品，更是一个能创造收益的平台。我们未来计划实现平台与个人的共赢，让用户在享受乐趣的同时也能获得实际回报。具体包括：
-              </p>
-              <ul className="overview-intro-list">
-                <li>
-                  <strong>Pro会员制</strong>
-                  <p>成为Pro会员，即可尊享桌面版"爱马仕"级别的专属体验。</p>
-                </li>
-                <li>
-                  <strong>充值服务</strong>
-                  <p>通过充值，刘看山可获取短文授权，用于生成短视频内容，平台生产视频+投放一体化，实现个人与平台的双向受益。</p>
-                </li>
-                <li>
-                  <strong>增值权益</strong>
-                  <p>充值后，刘看山将化身为您的投资顾问、心灵导师、天气预报小管家和新闻资讯先知，陪伴您的日常。</p>
-                </li>
-              </ul>
+              <div className="overview-intro">
+                <p className="overview-intro__lead">
+                  「今天开始和刘看山同居」是一款桌面端AI电子宠物——在AI重构连接的时代，把知乎优质内容、深度回答真正推到用户眼前。
+                </p>
+                <p className="overview-intro__p">
+                  一代人有一代人的电子宠物。这一代人的，会跳江南Style，会陪你写代码，会告诉你：你还有一个重要的视角从未看见。
+                </p>
+                <p className="overview-intro__p">
+                  作为桌面工作搭子，刘看山拥有长期记忆和20轮连续对话能力，像养宠物一样越养越懂你。
+                </p>
+                <p className="overview-intro__p">
+                  它支持定时提醒——番茄钟专注倒计时、喝水提醒、久坐起身，把效率工具和健康管理搬到桌面；一键查询天气、即时播报知乎热榜，占领桌面信息入口的最小生态位。
+                </p>
+                <hr className="overview-intro__hr" />
+                <p className="overview-intro__p">
+                  算法推荐越推越窄，只看热闹不见干货；优质深度回答在碎片化娱乐化浪潮中，好内容找不到我，我也找不到好内容。这是新时代的痛点，它的核心价值在这里：用Agent智能打破信息茧房，重新连接知乎最优质的内容。刘看山会根据你的对话历史，从知乎海量内容中推送优质回答；更关键的是——它还能主动推荐与你观点最相左的优质回答，指出一个你从未接触过但对理解问题至关重要的知识领域，并附上高价值内容链接。
+                </p>
+                <p className="overview-intro__p overview-intro__p--closing">
+                  我们的畅想是将知乎数亿条优质问答从被动等待搜索，变为主动嵌入用户桌面日常；用AI Agent的「反推荐」逻辑打破算法茧房，让被淹没的深度内容重见天日；以刘看山IP为锚点，构建用户与知乎之间的情感连接。
+                </p>
+              </div>
             </section>
 
 
