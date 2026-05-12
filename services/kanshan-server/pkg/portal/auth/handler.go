@@ -146,14 +146,14 @@ func oauthLoginConfigured() bool {
 }
 
 func buildAuthorizeURL(returnTo string) (string, error) {
-	baseURL := envOr("ZHIHU_OAUTH_AUTHORIZE_URL", "https://www.zhihu.com/oauth/authorize")
+	baseURL := envOr("ZHIHU_OAUTH_AUTHORIZE_URL", "https://openapi.zhihu.com/authorize")
 	parsed, err := url.Parse(baseURL)
 	if err != nil {
 		return "", err
 	}
 	values := parsed.Query()
 	values.Set("response_type", "code")
-	values.Set("client_id", os.Getenv("ZHIHU_OAUTH_CLIENT_ID"))
+	values.Set("app_id", os.Getenv("ZHIHU_OAUTH_CLIENT_ID"))
 	values.Set("redirect_uri", os.Getenv("ZHIHU_OAUTH_REDIRECT_URI"))
 	if scope := os.Getenv("ZHIHU_OAUTH_SCOPE"); scope != "" {
 		values.Set("scope", scope)

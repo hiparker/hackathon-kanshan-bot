@@ -142,7 +142,7 @@ func loadOAuthConfig() oauthConfig {
 		clientID:     os.Getenv("ZHIHU_OAUTH_CLIENT_ID"),
 		clientSecret: os.Getenv("ZHIHU_OAUTH_CLIENT_SECRET"),
 		redirectURI:  os.Getenv("ZHIHU_OAUTH_REDIRECT_URI"),
-		tokenURL:     envOr("ZHIHU_OAUTH_TOKEN_URL", "https://www.zhihu.com/oauth/token"),
+		tokenURL:     envOr("ZHIHU_OAUTH_TOKEN_URL", "https://openapi.zhihu.com/access_token"),
 		userInfoURL:  envOr("ZHIHU_OAUTH_USER_INFO_URL", "https://www.zhihu.com/oauth/userinfo"),
 	}
 }
@@ -154,8 +154,8 @@ func (c oauthConfig) enabled() bool {
 func (s *authService) exchangeCode(ctx context.Context, cfg oauthConfig, code string) (zhihuTokenResponse, error) {
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
-	form.Set("client_id", cfg.clientID)
-	form.Set("client_secret", cfg.clientSecret)
+	form.Set("app_id", cfg.clientID)
+	form.Set("app_key", cfg.clientSecret)
 	form.Set("redirect_uri", cfg.redirectURI)
 	form.Set("code", code)
 

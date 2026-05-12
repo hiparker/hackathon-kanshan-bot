@@ -131,6 +131,8 @@ basic/dao/impl    → db（仅为读 embed.FS）
 | `DB_PATH` | `./kanshan.db` | SQLite 文件路径 |
 | `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
 | `KANSHAN_DEBUG_MODE` | `false` | 是否开启直写数据库的调试接口。开启后允许 `POST /api/pet/debug/state` 和 `POST /api/inventory/restock` |
+| `ZHIHU_OAUTH_CLIENT_ID` |  | 知乎 OpenAPI `app_id` |
+| `ZHIHU_OAUTH_CLIENT_SECRET` |  | 知乎 OpenAPI `app_key` |
 | `MARKET_WS_PUSH_INTERVAL_SEC` | `60` | websocket 行情推送间隔（秒，最小 5） |
 | `MARKET_WEATHER_CITY` | `Beijing` | 天气查询城市 |
 | `MARKET_WEATHER_BASE_URL` | `https://wttr.in` | 可选覆盖天气公开源 |
