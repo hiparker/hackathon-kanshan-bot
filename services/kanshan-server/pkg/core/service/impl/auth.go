@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -194,13 +196,23 @@ func (s *authService) fetchUserInfo(ctx context.Context, cfg oauthConfig, access
 func (s *authService) doJSON(req *http.Request, out any) error {
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
+		slog.Error("zhihu oauth request failed", "url", req.URL.String(), "err", err)
 		return service.ErrUnauthorized
 	}
 	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		slog.Error("zhihu oauth read response failed", "url", req.URL.String(), "status", resp.StatusCode, "err", err)
+		return service.ErrInternal
+	}
+
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		slog.Error("zhihu oauth upstream rejected", "url", req.URL.String(), "status", resp.StatusCode, "body", string(body))
 		return service.ErrUnauthorized
 	}
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+	if err := json.Unmarshal(body, out); err != nil {
+		slog.Error("zhihu oauth decode response failed", "url", req.URL.String(), "status", resp.StatusCode, "body", string(body), "err", err)
 		return service.ErrInternal
 	}
 	return nil

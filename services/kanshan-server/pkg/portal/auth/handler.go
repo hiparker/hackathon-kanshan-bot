@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -111,6 +112,8 @@ func (h *Handler) zhihuLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) zhihuCallback(w http.ResponseWriter, r *http.Request) {
+	slog.Info("zhihu oauth callback received", "query", r.URL.RawQuery)
+
 	code := firstNonEmpty(
 		r.URL.Query().Get("code"),
 		r.URL.Query().Get("authorization_code"),
