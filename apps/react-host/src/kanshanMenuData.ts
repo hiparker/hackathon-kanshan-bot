@@ -170,7 +170,8 @@ interface RestockResponse {
   };
 }
 
-const CONFIGURED_API_BASE_URL = import.meta.env.VITE_KANSHAN_API_BASE_URL || 'http://localhost:8787';
+const DEFAULT_API_BASE_URL = import.meta.env.PROD ? 'https://kanshan.bedebug.com' : 'http://localhost:8787';
+const CONFIGURED_API_BASE_URL = import.meta.env.VITE_KANSHAN_API_BASE_URL || DEFAULT_API_BASE_URL;
 const API_PREFIX = import.meta.env.PROD ? `${CONFIGURED_API_BASE_URL.replace(/\/$/, '')}/api` : '/api';
 const AUTH_STORAGE_KEY = 'kanshan.session';
 const AUTH_MODE = import.meta.env.VITE_KANSHAN_AUTH_MODE || 'mock';

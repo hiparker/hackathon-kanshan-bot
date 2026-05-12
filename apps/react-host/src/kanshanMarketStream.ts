@@ -57,7 +57,8 @@ interface ConnectKanshanMarketStreamOptions {
   onError?: (error: string) => void;
 }
 
-const CONFIGURED_API_BASE_URL = import.meta.env.VITE_KANSHAN_API_BASE_URL || 'http://localhost:8787';
+const DEFAULT_API_BASE_URL = import.meta.env.PROD ? 'https://kanshan.bedebug.com' : 'http://localhost:8787';
+const CONFIGURED_API_BASE_URL = import.meta.env.VITE_KANSHAN_API_BASE_URL || DEFAULT_API_BASE_URL;
 const MAX_RECONNECT_DELAY_MS = 15000;
 const WEATHER_CITY_ZH_MAP: Record<string, string> = {
   beijing: '北京',

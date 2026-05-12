@@ -64,6 +64,8 @@ function isInDesktopWindowDragBand(clientX: number, clientY: number, stageRect: 
 
 const STAGE_SAFE_MARGIN = 0;
 const CHAT_DIALOGUE_VISIBLE_LINES = 3;
+export const KANSHAN_PAT_SEMANTIC_CLIP_NAME = 'Idle';
+export const KANSHAN_PAT_RAW_CLIP_NAME = resolveKanshanClipName(KANSHAN_PAT_SEMANTIC_CLIP_NAME);
 
 function resolveMenuPlacement(snapEdge?: PetSnapEdge): PetMenuPlacement {
   if (snapEdge === 'right' || snapEdge === 'top-right' || snapEdge === 'bottom-right') return 'left';
@@ -361,7 +363,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     const [activeMenuItem, setActiveMenuItem] = useState<'pat' | 'props' | 'tasks' | 'chat' | null>(null);
     const [openPanel, setOpenPanel] = useState<'props' | 'tasks' | 'chat' | null>(null);
     const stageDragRef = useRef<{ pointerId: number; startClientX: number; startClientY: number; startPosition: StagePosition } | null>(null);
-    const patClipNameRef = useRef(resolveKanshanClipName('Idle'));
+    const patClipNameRef = useRef(KANSHAN_PAT_RAW_CLIP_NAME);
     const directionDragRef = useRef<{ startX: number; startYaw: number; yaw: number } | null>(null);
     const [stagePosition, setStagePosition] = useState<StagePosition>(() =>
       embedInPanel ? { x: 0, y: 0 } : getDefaultStagePosition(),
