@@ -1981,8 +1981,51 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
 }
 
 .overview-card--intro {
-  border: 2px dashed rgba(59, 130, 246, 0.45);
-  background: #fafdff;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  background: linear-gradient(165deg, #f8fbff 0%, #ffffff 42%, #f6f9fc 100%);
+  padding: 22px 24px;
+  border-radius: 18px;
+}
+
+.overview-card--intro .overview-card__title {
+  margin-bottom: 18px;
+}
+
+.overview-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.overview-intro__lead {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.65;
+  letter-spacing: -0.015em;
+  color: #0f172a;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.overview-intro__p {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.78;
+  color: #475569;
+}
+
+.overview-intro__p--closing {
+  color: #334155;
+  font-weight: 500;
+}
+
+.overview-intro__hr {
+  border: none;
+  height: 1px;
+  margin: 4px 0;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(59, 130, 246, 0.22) 20%, rgba(59, 130, 246, 0.22) 80%, transparent 100%);
 }
 
 .overview-intro-list {
