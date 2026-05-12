@@ -35,7 +35,7 @@ describe('kanshanMarketStream', () => {
     };
 
     expect(buildKanshanMarketDialogueCandidates(snapshot)).toEqual([
-      { text: '天气 Beijing  Sunny  29C' },
+      { text: '天气 北京 晴 29C' },
       { text: '黄金 4706.40' },
       { text: 'BTC 81255.33' },
       { text: 'ETH 2311.35' },
@@ -68,7 +68,7 @@ describe('kanshanMarketStream', () => {
       ],
     };
 
-    expect(formatKanshanMarketDialogue(snapshot, 0.0)).toBe('看山播报：天气 BeijingSunny29C');
+    expect(formatKanshanMarketDialogue(snapshot, 0.0)).toBe('看山播报：天气 北京 晴 29C');
     expect(formatKanshanMarketDialogue(snapshot, 0.51)).toBe('看山播报：BTC 81255.33');
     expect(formatKanshanMarketDialogue(snapshot, 0.99)).toBe('看山播报：新闻：头条一');
   });
@@ -110,5 +110,20 @@ describe('kanshanMarketStream', () => {
       quotes: [{ key: 'btc', label: 'BTC价格', price: 1, change_percent: 0.2 }],
       news: [{ source: 'x', category: 'y', title: 'z' }],
     })).toBe('happy');
+  });
+
+  it('keeps Chinese weather text unchanged', () => {
+    expect(buildKanshanMarketDialogueCandidates({
+      generated_at: 1,
+      summary: '',
+      weather: {
+        city: '北京',
+        condition: '多云',
+        temp_c: 26,
+        feels_like_c: 27,
+        humidity: 40,
+      },
+      quotes: [],
+    })[0]).toEqual({ text: '天气 北京 多云 26C' });
   });
 });
