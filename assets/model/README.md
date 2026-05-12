@@ -29,6 +29,31 @@ pnpm assets:fetch -- --force  # 强制重新下载
 
 `pnpm install` 完成后会自动通过 `postinstall` 钩子运行 `assets:fetch`，所以正常情况下无需手动调用。新增模型时只追加 `manifest.json` 条目即可，脚本会按文件是否存在做幂等处理。
 
+## Web 端压缩模型
+
+Web 端固定读取 `kanshan-model-v5-web.glb`。它由原始模型 `kanshan-model-v5.glb` 压缩生成。文件名固定不变，部署时可以稳定命中同一套 Nginx 静态资源规则。
+
+```bash
+pnpm assets:fetch
+pnpm assets:compress:web
+```
+
+默认压缩策略是把贴图限制到 `1024` 并转成 `webp`。这会降低首屏下载体积，骨骼、动画和模型结构保持不变。
+
+如需更小体积，可以压到 `512`：
+
+```bash
+pnpm assets:compress:web -- --texture-size=512
+```
+
+如需指定输入输出：
+
+```bash
+pnpm assets:compress:web -- --input=assets/model/kanshan-model-v5.glb --output=assets/model/kanshan-model-v5-web.glb
+```
+
+不建议默认启用 `--meshopt`。它可以继续压缩网格，但需要前端 GLTF loader 支持 Meshopt 解码。
+
 ## 建议目录
 
 | 目录 | 说明 |

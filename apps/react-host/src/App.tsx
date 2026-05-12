@@ -52,7 +52,7 @@ function resolveActionHint(actionHint: string): PetAction | null {
 
 export function App() {
   const { pathname } = useLocation();
-  const embedInPanel = pathname === '/';
+  const embedInPanel = !IS_DESKTOP_MODE && pathname === '/';
   const previewRef = useRef<KanshanModelPreviewHandle | null>(null);
   const [defaultAction, setDefaultAction] = useState<PetAction>('idle');
   const [activeAction, setActiveAction] = useState<PetAction>('idle');
@@ -485,6 +485,10 @@ export function App() {
       onChatSubmit={() => void submitChat()}
     />
   );
+
+  if (IS_DESKTOP_MODE) {
+    return <main className={shellClass}>{kanshanModelPreview}</main>;
+  }
 
   return (
     <Routes>
