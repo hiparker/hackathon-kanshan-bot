@@ -31,7 +31,7 @@ pnpm assets:fetch -- --force  # 强制重新下载
 
 ## Web 端压缩模型
 
-Web 端固定读取 `kanshan-model-v5-web.glb`。它由原始模型 `kanshan-model-v5.glb` 压缩生成。文件名固定不变，部署时可以稳定命中同一套 Nginx 静态资源规则。
+Web 端固定读取知乎静态资源地址 `https://zhstatic.zhihu.com/tmp/260512/kanshan-model-v5-web.glb`，不会把 Web 模型打进 Vite 产物。`kanshan-model-v5-web.glb` 可由原始模型 `kanshan-model-v5.glb` 生成后上传到该地址。
 
 ```bash
 pnpm assets:fetch
