@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,68 +21,108 @@ import (
 )
 
 const (
-	defaultWeatherBaseURL = "https://wttr.in"
-	defaultCryptoURL      = "https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22,%22ETHUSDT%22%5D"
-	defaultGoldURL        = "https://api.gold-api.com/price/XAU"
-	defaultIndexURL       = "https://hq.sinajs.cn/list=s_sh000001,s_sz399001,int_nasdaq,int_hangseng"
-	defaultDailyNewsURL   = "https://orz.ai/api/v1/dailynews/?platform=tenxunwang"
-	defaultHotNewsURL     = "https://api.tcslw.cn/api/hotlist/eastmoney?type=102"
-	defaultZhihuHotURL    = "https://openapi.zhihu.com/openapi/billboard/list"
-	defaultWeatherCity    = "Beijing"
-	defaultZhihuTopCount  = 50
-	defaultZhihuHotHours  = 48
+	defaultWeatherBaseURL           = "https://wttr.in"
+	defaultCryptoURL                = "https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22,%22ETHUSDT%22%5D"
+	defaultGoldURL                  = "https://api.gold-api.com/price/XAU"
+	defaultIndexURL                 = "https://hq.sinajs.cn/list=s_sh000001,s_sz399001,int_nasdaq,int_hangseng"
+	defaultDailyNewsURL             = "https://orz.ai/api/v1/dailynews/?platform=tenxunwang"
+	defaultHotNewsURL               = "https://api.tcslw.cn/api/hotlist/eastmoney?type=102"
+	defaultZhihuHotURL              = "https://openapi.zhihu.com/openapi/billboard/list"
+	defaultZhihuDeveloperHotListURL = "https://developer.zhihu.com/api/v1/content/hot_list"
+	defaultZhihuSearchQuery         = "新闻"
+	defaultZhihuSearchCount         = 5
+	defaultZhihuHotListLimit        = 10
+	defaultZhihuHotCacheTTLSec      = 300
+	defaultWeatherCity              = "Beijing"
+	defaultZhihuTopCount            = 50
+	defaultZhihuHotHours            = 48
 )
 
 type marketService struct {
-	httpClient     *http.Client
-	weatherCity    string
-	weatherBaseURL string
-	cryptoURL      string
-	goldURL        string
-	indexURL       string
-	dailyNewsURL   string
-	hotNewsURL     string
-	zhihuHotURL    string
-	zhihuAppKey    string
-	zhihuAppSecret string
-	zhihuExtraInfo string
-	zhihuTopCount  int
-	zhihuHotHours  int
+	httpClient        *http.Client
+	weatherCity       string
+	weatherBaseURL    string
+	cryptoURL         string
+	goldURL           string
+	indexURL          string
+	dailyNewsURL      string
+	hotNewsURL        string
+	zhihuHotURL       string
+	zhihuAppKey       string
+	zhihuAppSecret    string
+	zhihuExtraInfo    string
+	zhihuBearer       string
+	zhihuSearchQuery  string
+	zhihuSearchCount  int
+	zhihuTopCount     int
+	zhihuHotHours     int
+	zhihuHotListLimit int
+	zhihuHotCacheTTL  int
+	zhihuHotCachePath string
+	zhihuHotListMu    sync.Mutex
 }
 
 type marketServiceConfig struct {
-	HTTPClient     *http.Client
-	WeatherCity    string
-	WeatherBaseURL string
-	CryptoURL      string
-	GoldURL        string
-	IndexURL       string
-	DailyNewsURL   string
-	HotNewsURL     string
-	ZhihuHotURL    string
-	ZhihuAppKey    string
-	ZhihuAppSecret string
-	ZhihuExtraInfo string
-	ZhihuTopCount  int
-	ZhihuHotHours  int
+	HTTPClient        *http.Client
+	WeatherCity       string
+	WeatherBaseURL    string
+	CryptoURL         string
+	GoldURL           string
+	IndexURL          string
+	DailyNewsURL      string
+	HotNewsURL        string
+	ZhihuHotURL       string
+	ZhihuAppKey       string
+	ZhihuAppSecret    string
+	ZhihuExtraInfo    string
+	ZhihuBearer       string
+	ZhihuSearchQuery  string
+	ZhihuSearchCount  int
+	ZhihuTopCount     int
+	ZhihuHotHours     int
+	ZhihuHotListLimit int
+	ZhihuHotCacheTTL  int
+	ZhihuHotCachePath string
 }
 
 // NewMarketService returns a websocket snapshot service backed by public quote APIs.
 func NewMarketService() service.MarketService {
+	bearer := strings.TrimSpace(os.Getenv("MARKET_ZHIHU_HOT_BEARER"))
+	if bearer == "" {
+		bearer = strings.TrimSpace(os.Getenv("ZHIHU_SECRET"))
+	}
+	zhihuHotURL := strings.TrimSpace(os.Getenv("MARKET_ZHIHU_HOT_URL"))
+	if zhihuHotURL == "" {
+		if bearer != "" {
+			zhihuHotURL = defaultZhihuDeveloperHotListURL
+		} else {
+			zhihuHotURL = defaultZhihuHotURL
+		}
+	}
+	searchQuery := strings.TrimSpace(os.Getenv("MARKET_ZHIHU_SEARCH_QUERY"))
+	if searchQuery == "" {
+		searchQuery = defaultZhihuSearchQuery
+	}
 	return newMarketService(marketServiceConfig{
-		WeatherCity:    envOrDefault("MARKET_WEATHER_CITY", defaultWeatherCity),
-		WeatherBaseURL: envOrDefault("MARKET_WEATHER_BASE_URL", defaultWeatherBaseURL),
-		CryptoURL:      envOrDefault("MARKET_CRYPTO_URL", defaultCryptoURL),
-		GoldURL:        envOrDefault("MARKET_GOLD_URL", defaultGoldURL),
-		IndexURL:       envOrDefault("MARKET_INDEX_URL", defaultIndexURL),
-		DailyNewsURL:   envOrDefault("MARKET_DAILY_NEWS_URL", defaultDailyNewsURL),
-		HotNewsURL:     envOrDefault("MARKET_HOT_NEWS_URL", defaultHotNewsURL),
-		ZhihuHotURL:    envOrDefault("MARKET_ZHIHU_HOT_URL", defaultZhihuHotURL),
-		ZhihuAppKey:    strings.TrimSpace(os.Getenv("MARKET_ZHIHU_HOT_APP_KEY")),
-		ZhihuAppSecret: strings.TrimSpace(os.Getenv("MARKET_ZHIHU_HOT_APP_SECRET")),
-		ZhihuExtraInfo: strings.TrimSpace(os.Getenv("MARKET_ZHIHU_HOT_EXTRA_INFO")),
-		ZhihuTopCount:  intEnvOrDefault("MARKET_ZHIHU_HOT_TOP_CNT", defaultZhihuTopCount),
-		ZhihuHotHours:  intEnvOrDefault("MARKET_ZHIHU_HOT_PUBLISH_IN_HOURS", defaultZhihuHotHours),
+		WeatherCity:       envOrDefault("MARKET_WEATHER_CITY", defaultWeatherCity),
+		WeatherBaseURL:    envOrDefault("MARKET_WEATHER_BASE_URL", defaultWeatherBaseURL),
+		CryptoURL:         envOrDefault("MARKET_CRYPTO_URL", defaultCryptoURL),
+		GoldURL:           envOrDefault("MARKET_GOLD_URL", defaultGoldURL),
+		IndexURL:          envOrDefault("MARKET_INDEX_URL", defaultIndexURL),
+		DailyNewsURL:      envOrDefault("MARKET_DAILY_NEWS_URL", defaultDailyNewsURL),
+		HotNewsURL:        envOrDefault("MARKET_HOT_NEWS_URL", defaultHotNewsURL),
+		ZhihuHotURL:       zhihuHotURL,
+		ZhihuAppKey:       strings.TrimSpace(os.Getenv("MARKET_ZHIHU_HOT_APP_KEY")),
+		ZhihuAppSecret:    strings.TrimSpace(os.Getenv("MARKET_ZHIHU_HOT_APP_SECRET")),
+		ZhihuExtraInfo:    strings.TrimSpace(os.Getenv("MARKET_ZHIHU_HOT_EXTRA_INFO")),
+		ZhihuBearer:       bearer,
+		ZhihuSearchQuery:  searchQuery,
+		ZhihuSearchCount:  intEnvOrDefault("MARKET_ZHIHU_SEARCH_COUNT", defaultZhihuSearchCount),
+		ZhihuTopCount:     intEnvOrDefault("MARKET_ZHIHU_HOT_TOP_CNT", defaultZhihuTopCount),
+		ZhihuHotHours:     intEnvOrDefault("MARKET_ZHIHU_HOT_PUBLISH_IN_HOURS", defaultZhihuHotHours),
+		ZhihuHotListLimit: intEnvOrDefault("MARKET_ZHIHU_HOT_LIST_LIMIT", defaultZhihuHotListLimit),
+		ZhihuHotCacheTTL:  intEnvOrDefault("MARKET_ZHIHU_HOT_CACHE_SEC", defaultZhihuHotCacheTTLSec),
+		ZhihuHotCachePath: strings.TrimSpace(os.Getenv("MARKET_ZHIHU_HOT_CACHE_FILE")),
 	})
 }
 
@@ -120,21 +161,44 @@ func newMarketService(cfg marketServiceConfig) service.MarketService {
 	if cfg.ZhihuHotHours <= 0 {
 		cfg.ZhihuHotHours = defaultZhihuHotHours
 	}
+	if strings.TrimSpace(cfg.ZhihuSearchQuery) == "" {
+		cfg.ZhihuSearchQuery = defaultZhihuSearchQuery
+	}
+	if cfg.ZhihuSearchCount <= 0 {
+		cfg.ZhihuSearchCount = defaultZhihuSearchCount
+	}
+	if cfg.ZhihuHotListLimit <= 0 {
+		cfg.ZhihuHotListLimit = defaultZhihuHotListLimit
+	}
+	if cfg.ZhihuHotCacheTTL <= 0 {
+		cfg.ZhihuHotCacheTTL = defaultZhihuHotCacheTTLSec
+	}
+	cachePath := strings.TrimSpace(cfg.ZhihuHotCachePath)
+	if cachePath == "" {
+		cachePath = defaultZhihuHotCacheFilePath()
+	}
+	cfg.ZhihuHotCachePath = cachePath
 	return &marketService{
-		httpClient:     client,
-		weatherCity:    cfg.WeatherCity,
-		weatherBaseURL: cfg.WeatherBaseURL,
-		cryptoURL:      cfg.CryptoURL,
-		goldURL:        cfg.GoldURL,
-		indexURL:       cfg.IndexURL,
-		dailyNewsURL:   cfg.DailyNewsURL,
-		hotNewsURL:     cfg.HotNewsURL,
-		zhihuHotURL:    cfg.ZhihuHotURL,
-		zhihuAppKey:    cfg.ZhihuAppKey,
-		zhihuAppSecret: cfg.ZhihuAppSecret,
-		zhihuExtraInfo: cfg.ZhihuExtraInfo,
-		zhihuTopCount:  cfg.ZhihuTopCount,
-		zhihuHotHours:  cfg.ZhihuHotHours,
+		httpClient:        client,
+		weatherCity:       cfg.WeatherCity,
+		weatherBaseURL:    cfg.WeatherBaseURL,
+		cryptoURL:         cfg.CryptoURL,
+		goldURL:           cfg.GoldURL,
+		indexURL:          cfg.IndexURL,
+		dailyNewsURL:      cfg.DailyNewsURL,
+		hotNewsURL:        cfg.HotNewsURL,
+		zhihuHotURL:       cfg.ZhihuHotURL,
+		zhihuAppKey:       cfg.ZhihuAppKey,
+		zhihuAppSecret:    cfg.ZhihuAppSecret,
+		zhihuExtraInfo:    cfg.ZhihuExtraInfo,
+		zhihuBearer:       cfg.ZhihuBearer,
+		zhihuSearchQuery:  cfg.ZhihuSearchQuery,
+		zhihuSearchCount:  cfg.ZhihuSearchCount,
+		zhihuTopCount:     cfg.ZhihuTopCount,
+		zhihuHotHours:     cfg.ZhihuHotHours,
+		zhihuHotListLimit: cfg.ZhihuHotListLimit,
+		zhihuHotCacheTTL:  cfg.ZhihuHotCacheTTL,
+		zhihuHotCachePath: cfg.ZhihuHotCachePath,
 	}
 }
 
@@ -561,13 +625,14 @@ func (s *marketService) fetchNews(ctx context.Context) ([]service.MarketNews, er
 	news := make([]service.MarketNews, 0, 9)
 	seen := make(map[string]struct{}, 9)
 
-	//if items, err := s.fetchDailyNews(ctx); err == nil {
-	//	news = appendUniqueNews(news, items, 3, seen)
-	//}
-	//if items, err := s.fetchHotNews(ctx); err == nil {
-	//	news = appendUniqueNews(news, items, 6, seen)
-	//}
-	if items, err := s.fetchZhihuHotNews(ctx); err == nil {
+	if items, err := s.fetchDailyNews(ctx); err == nil {
+		news = appendUniqueNews(news, items, 3, seen)
+	}
+	if items, err := s.fetchHotNews(ctx); err == nil {
+		news = appendUniqueNews(news, items, 6, seen)
+	}
+	items, err := s.fetchZhihuHotNews(ctx)
+	if err == nil {
 		news = appendUniqueNews(news, items, 9, seen)
 	}
 	if len(news) == 0 {
@@ -694,6 +759,9 @@ func (s *marketService) fetchZhihuHotNews(ctx context.Context) ([]service.Market
 	if strings.TrimSpace(s.zhihuHotURL) == "" {
 		return nil, fmt.Errorf("zhihu hot url not configured")
 	}
+	if s.zhihuBearer != "" {
+		return s.fetchZhihuDeveloperHotListCached(ctx)
+	}
 	if s.zhihuAppKey == "" || s.zhihuAppSecret == "" {
 		return nil, fmt.Errorf("zhihu hot credentials not configured")
 	}
@@ -732,6 +800,176 @@ func (s *marketService) fetchZhihuHotNews(ctx context.Context) ([]service.Market
 		return nil, err
 	}
 	return parseZhihuHotPayload(body)
+}
+
+// fetchZhihuDeveloperHotListCached matches:
+//
+//	curl 'https://developer.zhihu.com/api/v1/content/hot_list?Limit=N' \
+//	  -H 'Authorization: Bearer <access_secret>' \
+//	  -H "X-Request-Timestamp: $(date +%s)"
+//
+// 响应在 TTL 内会写入 MARKET_ZHIHU_HOT_CACHE_FILE（默认用户缓存目录下文件），下次优先读本地。
+func (s *marketService) fetchZhihuDeveloperHotListCached(ctx context.Context) ([]service.MarketNews, error) {
+	s.zhihuHotListMu.Lock()
+	defer s.zhihuHotListMu.Unlock()
+
+	if items, ok := s.readZhihuHotListCache(false); ok {
+		return items, nil
+	}
+	body, err := s.fetchZhihuDeveloperHotListHTTP(ctx)
+	if err != nil {
+		if items, ok := s.readZhihuHotListCache(true); ok {
+			return items, nil
+		}
+		return nil, err
+	}
+	items, err := parseZhihuDeveloperHotListBody(body, s.zhihuHotListLimit)
+	if err != nil {
+		if stale, ok := s.readZhihuHotListCache(true); ok {
+			return stale, nil
+		}
+		return nil, err
+	}
+	_ = s.writeZhihuHotListCache(items)
+	return items, nil
+}
+
+func (s *marketService) fetchZhihuDeveloperHotListHTTP(ctx context.Context) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.zhihuHotURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	q := req.URL.Query()
+	q.Set("Limit", strconv.Itoa(s.zhihuHotListLimit))
+	req.URL.RawQuery = q.Encode()
+
+	req.Header.Set("Authorization", "Bearer "+s.zhihuBearer)
+	req.Header.Set("X-Request-Timestamp", strconv.FormatInt(time.Now().Unix(), 10))
+	req.Header.Set("User-Agent", "kanshan-server/market-feed")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		return nil, fmt.Errorf("status %d", resp.StatusCode)
+	}
+	return io.ReadAll(resp.Body)
+}
+
+type zhihuHotListFileCache struct {
+	FetchedAt int64                `json:"fetched_at"`
+	Items     []service.MarketNews `json:"items"`
+}
+
+func (s *marketService) readZhihuHotListCache(allowStale bool) ([]service.MarketNews, bool) {
+	path := strings.TrimSpace(s.zhihuHotCachePath)
+	if path == "" {
+		return nil, false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 {
+		return nil, false
+	}
+	var c zhihuHotListFileCache
+	if err := json.Unmarshal(data, &c); err != nil || len(c.Items) == 0 {
+		return nil, false
+	}
+	if allowStale {
+		return c.Items, true
+	}
+	ttl := s.zhihuHotCacheTTL
+	if ttl <= 0 {
+		ttl = defaultZhihuHotCacheTTLSec
+	}
+	if time.Now().Unix()-c.FetchedAt > int64(ttl) {
+		return nil, false
+	}
+	return c.Items, true
+}
+
+func (s *marketService) writeZhihuHotListCache(items []service.MarketNews) error {
+	path := strings.TrimSpace(s.zhihuHotCachePath)
+	if path == "" {
+		return nil
+	}
+	dir := filepath.Dir(path)
+	if dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
+	payload, err := json.Marshal(zhihuHotListFileCache{
+		FetchedAt: time.Now().Unix(),
+		Items:     items,
+	})
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, payload, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+func parseZhihuDeveloperHotListBody(body []byte, maxItems int) ([]service.MarketNews, error) {
+	if maxItems <= 0 {
+		maxItems = defaultZhihuHotListLimit
+	}
+	var payload struct {
+		Code    int    `json:"Code"`
+		Message string `json:"Message"`
+		Data    struct {
+			Items []struct {
+				Title        string `json:"Title"`
+				URL          string `json:"Url"`
+				Summary      string `json:"Summary"`
+				ThumbnailURL string `json:"ThumbnailUrl"`
+			} `json:"Items"`
+		} `json:"Data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	if payload.Code != 0 {
+		msg := strings.TrimSpace(payload.Message)
+		if msg == "" {
+			msg = fmt.Sprintf("code %d", payload.Code)
+		}
+		return nil, fmt.Errorf("hot_list: %s", msg)
+	}
+	items := payload.Data.Items
+	if len(items) == 0 {
+		return nil, fmt.Errorf("empty hot_list results")
+	}
+	out := make([]service.MarketNews, 0, minInt(len(items), maxItems))
+	for _, item := range items {
+		title := strings.TrimSpace(item.Title)
+		if title == "" {
+			continue
+		}
+		link := strings.TrimSpace(item.URL)
+		if link == "" {
+			continue
+		}
+		out = append(out, service.MarketNews{
+			Source:      "zhihu-hot",
+			Category:    "zhihu-hotlist",
+			Title:       title,
+			Summary:     trimSummary(item.Summary, 96),
+			URL:         link,
+			PublishedAt: "",
+		})
+		if len(out) >= maxItems {
+			break
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no valid hot_list items")
+	}
+	return out, nil
 }
 
 func buildZhihuHotSignature(appKey, timestamp, logID, extraInfo, appSecret string) string {
@@ -967,4 +1205,12 @@ func intEnvOrDefault(key string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+func defaultZhihuHotCacheFilePath() string {
+	dir, err := os.UserCacheDir()
+	if err != nil || strings.TrimSpace(dir) == "" {
+		dir = "."
+	}
+	return filepath.Join(dir, "kanshan-server", "zhihu-hot-list-cache.json")
 }
