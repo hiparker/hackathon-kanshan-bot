@@ -2452,6 +2452,7 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   padding: 12px 20px;
   transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
   box-shadow: 0 2px 10px rgba(23, 32, 42, 0.08);
+  box-sizing: border-box;
 }
 
 .overview-btn:hover {
@@ -2483,12 +2484,13 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
 
 .overview-btn--block {
   width: 100%;
+  max-width: 100%;
   margin-bottom: 22px;
 }
 
 .overview-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 36%);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 36%);
   gap: 24px 28px;
   align-items: start;
 }
@@ -2503,12 +2505,14 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  min-width: 0;
 }
 
 .overview-sidebar {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  min-width: 0;
 }
 
 .overview-card {
@@ -2517,6 +2521,7 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   padding: 20px 22px;
   box-shadow: 0 2px 16px rgba(23, 32, 42, 0.06);
   border: 1px solid rgba(23, 32, 42, 0.06);
+  min-width: 0;
 }
 
 .overview-card--intro {
@@ -2691,9 +2696,10 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
 
 .overview-action-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin-top: 16px;
+  min-width: 0;
 }
 
 .overview-action-btn {
@@ -2712,17 +2718,24 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
   font-size: 1rem;
   box-shadow: 0 2px 8px rgba(23, 32, 42, 0.1);
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .overview-action-btn:hover {
   background: linear-gradient(135deg, #f7d291 0%, #f0c070 100%);
-  box-shadow: 4px 4px 0 #221f1e, 0 4px 12px rgba(23, 32, 42, 0.15);
-  transform: translate(-2px, -2px);
+  box-shadow: 0 4px 12px rgba(23, 32, 42, 0.12);
+  transform: translateY(-1px);
 }
 
 .overview-action-btn:active {
   transform: translate(0, 0);
   box-shadow: 0 2px 4px rgba(23, 32, 42, 0.1);
+}
+
+.glb-shell--overview .overview-card:has(.overview-action-grid) {
+  overflow: hidden;
 }
 
 .overview-chat {
@@ -2867,6 +2880,7 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
 .overview-card--support {
   background: linear-gradient(180deg, #fef3c7 0%, #fde68a 100%);
   border-color: rgba(245, 158, 11, 0.3);
+  overflow: hidden;
 }
 
 .overview-support__text {
@@ -3092,6 +3106,7 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
   color: rgba(255, 255, 255, 0.72);
   backdrop-filter: blur(14px) saturate(1.2);
+  min-width: 0;
 }
 
 .overview-card--intro {
@@ -3106,6 +3121,7 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   background:
     linear-gradient(145deg, rgba(34, 211, 238, 0.11), rgba(20, 184, 166, 0.06)),
     rgba(255, 255, 255, 0.04);
+  overflow: hidden;
 }
 
 .overview-card__title,
@@ -3149,6 +3165,10 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   color: #a5f3fc;
 }
 
+.overview-card--support .overview-btn--blue {
+  box-shadow: 0 0 14px rgba(34, 211, 238, 0.14);
+}
+
 .overview-action-btn {
   border-color: rgba(34, 211, 238, 0.24);
   background: rgba(34, 211, 238, 0.08);
@@ -3158,7 +3178,7 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
 
 .overview-action-btn:hover {
   background: rgba(34, 211, 238, 0.16);
-  box-shadow: 0 0 30px rgba(34, 211, 238, 0.18);
+  box-shadow: 0 0 14px rgba(34, 211, 238, 0.14);
   transform: translateY(-1px);
 }
 

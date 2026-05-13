@@ -317,9 +317,15 @@ export function OverviewPage({
               <p className="overview-support__text">
                 让我们一起，把这份陪伴带给全网用户。
               </p>
-              <button type="button" className="overview-btn overview-btn--blue overview-btn--block">
+              <a
+                href={"https://www.zhihu.com/pin/2037137126333096270"}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="overview-btn overview-btn--blue overview-btn--block"
+                style={{ textDecoration: 'none' }}
+              >
                 💖 前往点赞支持
-              </button>
+              </a>
             </section>
 
             <section className="overview-card overview-card--preview">
