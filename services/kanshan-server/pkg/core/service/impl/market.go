@@ -697,12 +697,12 @@ func (s *marketService) fetchNews(ctx context.Context) ([]service.MarketNews, er
 	news := make([]service.MarketNews, 0, 9)
 	seen := make(map[string]struct{}, 9)
 
-	if items, err := s.fetchDailyNews(ctx); err == nil {
-		news = appendUniqueNews(news, items, 3, seen)
-	}
-	if items, err := s.fetchHotNews(ctx); err == nil {
-		news = appendUniqueNews(news, items, 6, seen)
-	}
+	//if items, err := s.fetchDailyNews(ctx); err == nil {
+	//	news = appendUniqueNews(news, items, 3, seen)
+	//}
+	//if items, err := s.fetchHotNews(ctx); err == nil {
+	//	news = appendUniqueNews(news, items, 6, seen)
+	//}
 	items, err := s.fetchZhihuHotNews(ctx)
 	if err == nil {
 		news = appendUniqueNews(news, items, 9, seen)
