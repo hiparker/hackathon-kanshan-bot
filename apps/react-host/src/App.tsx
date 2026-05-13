@@ -22,6 +22,7 @@ import {
   petSnapshotToDefaultState,
   petSnapshotToStats,
   progressKanshanTask,
+  redirectToZhihuLogin,
   interactKanshan,
   signOutKanshan,
   startZhihuLogin,
@@ -284,6 +285,12 @@ export function App() {
     setAuthStatus('redirecting');
     void startZhihuLogin().catch(() => setAuthStatus('unauthenticated'));
   }, []);
+
+  useEffect(() => {
+    if (IS_DESKTOP_MODE || pathname !== '/' || !SHOULD_REQUIRE_AUTH || authStatus !== 'unauthenticated') return;
+    setAuthStatus('redirecting');
+    redirectToZhihuLogin(window.location.href);
+  }, [authStatus, pathname]);
 
   useEffect(() => {
     isSendingRef.current = isSending;
