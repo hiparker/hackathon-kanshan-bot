@@ -2885,3 +2885,174 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   color: #888;
   font-size: 0.85rem;
 }
+
+/* Awareness hero background on /overview */
+.glb-shell--overview:not(.glb-shell--desktop) {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: #010102;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.overview-awareness-bg {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(36, 142, 170, 0.34), transparent 42%),
+    radial-gradient(circle at 64% 38%, rgba(238, 224, 255, 0.2), transparent 30%),
+    #010102;
+  pointer-events: none;
+}
+
+.overview-awareness-bg::after {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(1, 1, 2, 0.08) 0%, rgba(1, 1, 2, 0.24) 64%, rgba(1, 1, 2, 0.74) 100%),
+    radial-gradient(circle at 50% 0%, transparent 0%, rgba(1, 1, 2, 0.38) 72%);
+  content: "";
+}
+
+.overview-awareness-bg__scene,
+.overview-awareness-bg__scene > div,
+.overview-awareness-bg__scene canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.overview-page {
+  position: relative;
+  z-index: 1;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.overview-header__title {
+  color: #fff;
+  text-shadow: 0 0 34px rgba(34, 211, 238, 0.2);
+}
+
+.overview-header__subtitle {
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.overview-tag--success {
+  border: 1px solid rgba(34, 211, 238, 0.3);
+  background: rgba(34, 211, 238, 0.1);
+  color: #67e8f9;
+}
+
+.overview-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
+  color: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(14px) saturate(1.2);
+}
+
+.overview-card--intro {
+  border-color: rgba(34, 211, 238, 0.18);
+  background:
+    linear-gradient(145deg, rgba(34, 211, 238, 0.08), rgba(168, 85, 247, 0.05)),
+    rgba(255, 255, 255, 0.045);
+}
+
+.overview-card--support {
+  border-color: rgba(34, 211, 238, 0.2);
+  background:
+    linear-gradient(145deg, rgba(34, 211, 238, 0.11), rgba(20, 184, 166, 0.06)),
+    rgba(255, 255, 255, 0.04);
+}
+
+.overview-card__title,
+.overview-feed__title,
+.overview-files__name,
+.overview-feature__label {
+  color: #fff;
+}
+
+.overview-intro__lead {
+  border-bottom-color: rgba(34, 211, 238, 0.18);
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.overview-intro__p,
+.overview-card__text,
+.overview-feed__desc,
+.overview-support__text,
+.overview-files__meta {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.overview-intro__p--closing {
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.overview-intro__hr {
+  background: linear-gradient(90deg, transparent 0%, rgba(34, 211, 238, 0.28) 20%, rgba(168, 85, 247, 0.26) 80%, transparent 100%);
+}
+
+.overview-btn--secondary {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.overview-btn--blue {
+  border: 1px solid rgba(34, 211, 238, 0.28);
+  background: rgba(34, 211, 238, 0.14);
+  box-shadow: 0 0 30px rgba(34, 211, 238, 0.16);
+  color: #a5f3fc;
+}
+
+.overview-action-btn {
+  border-color: rgba(34, 211, 238, 0.24);
+  background: rgba(34, 211, 238, 0.08);
+  box-shadow: none;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.overview-action-btn:hover {
+  background: rgba(34, 211, 238, 0.16);
+  box-shadow: 0 0 30px rgba(34, 211, 238, 0.18);
+  transform: translateY(-1px);
+}
+
+.overview-preview-slot {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.dropdown-btn {
+  border: 1px solid rgba(34, 211, 238, 0.3);
+  background: rgba(34, 211, 238, 0.14);
+  box-shadow: 0 0 30px rgba(34, 211, 238, 0.16);
+  color: #ecfeff;
+}
+
+.dropdown-menu {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(5, 11, 22, 0.9);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+
+.dropdown-item {
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.dropdown-item:hover {
+  background: rgba(34, 211, 238, 0.12);
+}
+
+.dropdown-item-check {
+  color: #67e8f9;
+}
+
+.dropdown-item-ext,
+.overview-card__hint,
+.overview-feed__time {
+  color: rgba(255, 255, 255, 0.42);
+}
