@@ -4,6 +4,9 @@ import type { PetAction } from '@kanshan/bridge';
 import { Link } from 'react-router-dom';
 import UnicornScene from 'unicornstudio-react';
 
+const MAC_ARM_DOWNLOAD_URL = 'https://upload.bedebug.com/hackathon-2026/kanshan-darwin-aarch64.zip';
+const WINDOWS_DOWNLOAD_URL = 'https://upload.bedebug.com/hackathon-2026/kanshan-exe.zip';
+
 export interface OverviewPageProps {
   shellClass: string;
   children: ReactNode;
@@ -116,15 +119,10 @@ export function OverviewPage({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const options = [
-    { label: 'Mac 版 (Apple Silicon)', ext: '.dmg', url: 'https://github.com/hiparker/hackathon-kanshan-bot/releases/download/v1.0.10/_1.0.4_aarch64.dmg' },
+    { label: 'Mac 版 (Apple Silicon)', ext: '.zip', url: MAC_ARM_DOWNLOAD_URL },
     { label: 'Mac 版 (Intel)', ext: '.dmg', url: 'https://github.com/hiparker/hackathon-kanshan-bot/releases/download/v1.0.10/_1.0.4_x64.dmg' },
-    { label: 'Windows 版', ext: '.exe', url: 'https://github.com/hiparker/hackathon-kanshan-bot/releases/download/v1.0.10/_1.0.4_x64-setup.exe' },
+    { label: 'Windows 版', ext: '.zip', url: WINDOWS_DOWNLOAD_URL },
   ];
-
-  const getSelectedUrl = () => {
-    const option = options.find(o => o.label === selected);
-    return option?.url || '';
-  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -163,14 +161,23 @@ export function OverviewPage({
           </div>
           <p className="overview-header__subtitle">活在你的电脑里，陪伴式状态与道具互动。</p>
           <div className="overview-header__actions">
-            <div className="dropdown" ref={dropdownRef}>
+            <a
+              href={MAC_ARM_DOWNLOAD_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="overview-download-primary"
+            >
+              <IconDownload />
+              <span>下载 Mac Apple Silicon 版</span>
+              <span className="overview-download-primary__meta">ZIP</span>
+            </a>
+            <div className="dropdown dropdown--secondary" ref={dropdownRef}>
               <button
                 type="button"
                 className="dropdown-btn"
                 onClick={() => setIsOpen(!isOpen)}
               >
-                <IconDownload />
-                <span>下载 {selected}</span>
+                <span>其他版本</span>
                 <IconChevronDown />
               </button>
               {isOpen && (
@@ -207,6 +214,30 @@ export function OverviewPage({
               <span>在 GitHub 上查看</span>
             </a>
           </div>
+          <section className="overview-install" aria-label="Mac 安装步骤">
+            <div className="overview-install__lead">
+              <span className="overview-install__eyebrow">Mac 内部测试版</span>
+              <h2 className="overview-install__title">下载后按 3 步打开刘看山。</h2>
+              <p className="overview-install__text">
+                当前 ZIP 包未经过 Apple 签名和公证。macOS 可能提示应用已损坏。按下面步骤处理后即可测试。
+              </p>
+            </div>
+            <ol className="overview-install__steps">
+              <li>
+                <span className="overview-install__num">01</span>
+                <span>下载 ZIP 压缩包并解压。</span>
+              </li>
+              <li>
+                <span className="overview-install__num">02</span>
+                <span>把 <strong>刘看山.app</strong> 拖入 <strong>应用程序</strong>。</span>
+              </li>
+              <li>
+                <span className="overview-install__num">03</span>
+                <span>打开终端，执行下面命令。</span>
+              </li>
+            </ol>
+            <code className="overview-install__command">xattr -d com.apple.quarantine /Applications/刘看山.app</code>
+          </section>
         </header>
 
         <div className="overview-grid">

@@ -434,6 +434,8 @@ export function App() {
   }, [clearTemporaryFallbackTimer, isDead]);
 
   useEffect(() => {
+    if (authStatus !== 'authenticated') return;
+
     const stop = connectKanshanMarketStream({
       onSnapshot(snapshot) {
         const candidate = pickKanshanMarketDialogueCandidate(snapshot);
@@ -448,7 +450,7 @@ export function App() {
       },
     });
     return stop;
-  }, [applyMarketDialogue, playAction]);
+  }, [applyMarketDialogue, authStatus, playAction]);
 
   const finishTemporaryAction = useCallback(() => {
     const temporaryAction = temporaryActionRef.current;
