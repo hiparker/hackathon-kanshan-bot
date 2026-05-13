@@ -87,6 +87,7 @@ export function App() {
   const [propItems, setPropItems] = useState<KanshanPropItem[]>([]);
   const [taskItems, setTaskItems] = useState<KanshanTaskItem[]>([]);
   const [petStats, setPetStats] = useState<KanshanPetStats | null>(null);
+  const [petLifecycle, setPetLifecycle] = useState('normal');
   const [menuDataStatus, setMenuDataStatus] = useState<MenuDataStatus>('idle');
   const [authStatus, setAuthStatus] = useState<AuthStatus>(() => (SHOULD_REQUIRE_AUTH ? 'checking' : 'authenticated'));
   const [currentUser, setCurrentUser] = useState<KanshanCurrentUser | null>(() => getStoredKanshanUser());
@@ -380,6 +381,7 @@ export function App() {
   const applyDefaultState = useCallback((nextDefaultState: KanshanDefaultState) => {
     isFollowingDefaultRef.current = true;
     defaultActionRef.current = nextDefaultState.action;
+    setPetLifecycle(nextDefaultState.lifecycle);
     setDefaultAction(nextDefaultState.action);
     setActiveAction(nextDefaultState.action);
     setActionRevision((current) => current + 1);
@@ -388,6 +390,7 @@ export function App() {
 
   const refreshPetStats = useCallback(async () => {
     const snapshot = await fetchKanshanPetSnapshot();
+    setPetLifecycle(snapshot.lifecycle);
     setPetStats(petSnapshotToStats(snapshot));
     return snapshot;
   }, []);
@@ -395,6 +398,7 @@ export function App() {
   const fetchAndStoreDefaultState = useCallback(async () => {
     const nextDefaultState = await fetchKanshanDefaultState();
     defaultActionRef.current = nextDefaultState.action;
+    setPetLifecycle(nextDefaultState.lifecycle);
     setDefaultAction(nextDefaultState.action);
     if (nextDefaultState.action === 'idle') setIsDead(false);
     return nextDefaultState;
@@ -444,7 +448,10 @@ export function App() {
           const hintedAction = resolveActionHint(defaultStateResult.value.actionHint ?? '');
           if (hintedAction) playActionRef.current(hintedAction);
         }
-        if (petStateResult.status === 'fulfilled') setPetStats(petSnapshotToStats(petStateResult.value));
+        if (petStateResult.status === 'fulfilled') {
+          setPetLifecycle(petStateResult.value.lifecycle);
+          setPetStats(petSnapshotToStats(petStateResult.value));
+        }
 
         setMenuDataStatus(propsResult.status === 'fulfilled' || tasksResult.status === 'fulfilled' ? 'ready' : 'error');
       });
@@ -600,6 +607,7 @@ export function App() {
       .then(async ({ actionHint, newState }) => {
         const hintedAction = resolveActionHint(actionHint);
         if (newState) {
+          setPetLifecycle(newState.lifecycle);
           applyDefaultState(petSnapshotToDefaultState(newState));
         } else if (!hintedAction) {
           await fetchAndApplyDefaultState();
@@ -739,6 +747,7 @@ export function App() {
       modelUrl={kanshanModelConfig.url}
       needsLogin={authStatus !== 'authenticated'}
       ownerName={currentUser?.name}
+      petLifecycle={petLifecycle}
       petStats={petStats}
       propItems={propItems}
       taskItems={taskItems}

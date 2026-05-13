@@ -21,6 +21,7 @@ type PetSnapEdge = PetMenuPlacement | 'top-left' | 'top-right' | 'bottom-left' |
 type StagePosition = { x: number; y: number };
 type DialoguePlacement = PetMenuPlacement;
 type BubbleMode = 'action' | 'chat';
+type PetLifecycle = 'normal' | 'sick' | 'dead' | string;
 type TauriWindowApi = typeof import('@tauri-apps/api/window');
 type TauriCoreApi = typeof import('@tauri-apps/api/core');
 type DesktopMonitorInfo = Awaited<ReturnType<TauriWindowApi['availableMonitors']>>[number];
@@ -310,6 +311,7 @@ interface KanshanModelPreviewProps {
   modelUrl: string;
   needsLogin?: boolean;
   ownerName?: string;
+  petLifecycle?: string;
   petStats?: KanshanPetStats | null;
   propItems: KanshanPropItem[];
   taskItems: KanshanTaskItem[];
@@ -341,6 +343,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     modelUrl,
     needsLogin = false,
     ownerName,
+    petLifecycle = 'normal',
     petStats,
     propItems,
     taskItems,
@@ -1157,6 +1160,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
             placement={menuPlacement}
             menuDataStatus={menuDataStatus}
             rewardToast={rewardToast}
+            petLifecycle={petLifecycle}
             propItems={propItems}
             taskItems={taskItems}
             onPat={playPatAction}
@@ -1301,6 +1305,20 @@ function clampStatValue(value: number): number {
   return Math.round(value);
 }
 
+function isPropDisabled(item: KanshanPropItem, petLifecycle: PetLifecycle): boolean {
+  if (item.count <= 0) return true;
+  if (!item.precondition) return false;
+  return item.precondition !== petLifecycle;
+}
+
+function getPropMenuTitle(item: KanshanPropItem, disabled: boolean): string | undefined {
+  if (!disabled) return item.rewardHint;
+  if (item.count <= 0) return '暂无库存';
+  if (item.precondition === 'sick') return '仅生病时可用';
+  if (item.precondition === 'dead') return '仅死亡时可用';
+  return item.rewardHint;
+}
+
 interface KanshanHoverMenuProps {
   activeMenuItem: 'pat' | 'like' | 'props' | 'tasks' | 'chat' | null;
   chatInput: string;
@@ -1310,6 +1328,7 @@ interface KanshanHoverMenuProps {
   placement: PetMenuPlacement;
   menuDataStatus: 'idle' | 'loading' | 'ready' | 'error';
   rewardToast: KanshanRewardToast;
+  petLifecycle: string;
   propItems: KanshanPropItem[];
   taskItems: KanshanTaskItem[];
   onPat: () => void;
@@ -1334,6 +1353,7 @@ function KanshanHoverMenu({
   placement,
   menuDataStatus,
   rewardToast,
+  petLifecycle,
   propItems,
   taskItems,
   onPat,
@@ -1365,6 +1385,7 @@ function KanshanHoverMenu({
   useEffect(() => clearCloseMenuTimer, []);
 
   const handleSelectProp = (item: KanshanPropItem) => {
+    if (isPropDisabled(item, petLifecycle)) return;
     onSelectProp(item);
     closeSubmenu();
   };
@@ -1454,15 +1475,18 @@ function KanshanHoverMenu({
               menuDataStatus={menuDataStatus}
               onRetryMenuData={onRetryMenuData}
             >
-              {propItems.map((item) => (
-                <button key={item.id} className="pet-submenu-row" type="button" role="menuitem" data-menu-title={item.rewardHint} onClick={() => handleSelectProp(item)}>
-                  <span className="pet-submenu-label">
-                    <PropItemIcon propId={item.id} />
-                    <span>{item.name}</span>
-                  </span>
-                  <strong>x{item.count}</strong>
-                </button>
-              ))}
+              {propItems.map((item) => {
+                const disabled = isPropDisabled(item, petLifecycle);
+                return (
+                  <button key={item.id} className="pet-submenu-row" type="button" role="menuitem" disabled={disabled} data-menu-title={getPropMenuTitle(item, disabled)} onClick={() => handleSelectProp(item)}>
+                    <span className="pet-submenu-label">
+                      <PropItemIcon propId={item.id} />
+                      <span>{item.name}</span>
+                    </span>
+                    <strong>x{item.count}</strong>
+                  </button>
+                );
+              })}
             </MenuDataContent>
           </div>
         </div>
