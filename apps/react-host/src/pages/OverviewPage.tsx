@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { PetAction } from '@kanshan/bridge';
 import { Link } from 'react-router-dom';
+import UnicornScene from 'unicornstudio-react';
 
 export interface OverviewPageProps {
   shellClass: string;
@@ -140,6 +141,20 @@ export function OverviewPage({
 
   return (
     <main className={`${shellClass} glb-shell--overview`}>
+      <div className="overview-awareness-bg" aria-hidden="true">
+        <UnicornScene
+          jsonFilePath="/unicorn-scene.json"
+          production
+          lazyLoad
+          dpi={1}
+          fps={30}
+          scale={1}
+          width="100%"
+          height="100%"
+          className="overview-awareness-bg__scene"
+          altText="Awareness animated background"
+        />
+      </div>
       <div className="overview-page">
         <header className="overview-header">
           <div className="overview-header__title-row">

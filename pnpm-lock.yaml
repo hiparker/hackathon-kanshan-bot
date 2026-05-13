@@ -68,6 +68,9 @@ importers:
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
+      unicornstudio-react:
+        specifier: ^2.1.9
+        version: 2.1.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       vite:
         specifier: ^5.4.11
         version: 5.4.21
@@ -868,6 +871,17 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
+  unicornstudio-react@2.1.9:
+    resolution: {integrity: sha512-eitHdcr4bEl1VtGbWoUVsDhhbL/25IyKYdf4BX9b88Hb5/PYdH/vTZRN4SRLD9j1XD2x8XDLmRezx6VAv6Um9g==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      next: '*'
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+    peerDependenciesMeta:
+      next:
+        optional: true
+
   update-browserslist-db@1.2.3:
     resolution: {integrity: sha512-Js0m9cx+qOgDxo0eMiFGEueWztz+d4+M3rGlmKPT+T4IS/jP4ylw3Nwpu6cpTTP8R1MAC1kF4VbdLt3ARf209w==}
     hasBin: true
@@ -1615,6 +1629,11 @@ snapshots:
   totalist@3.0.1: {}
 
   typescript@5.9.3: {}
+
+  unicornstudio-react@2.1.9(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+    dependencies:
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
 
   update-browserslist-db@1.2.3(browserslist@4.28.2):
     dependencies:
