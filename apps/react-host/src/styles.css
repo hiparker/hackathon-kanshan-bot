@@ -902,6 +902,7 @@ button[aria-disabled="true"]:hover {
 }
 
 .pet-submenu-row {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -917,6 +918,37 @@ button[aria-disabled="true"]:hover {
   line-height: 1.2;
   padding: 7px 8px;
   text-align: left;
+}
+
+.pet-submenu-row[data-menu-title]::before {
+  content: attr(data-menu-title);
+  position: absolute;
+  right: 8px;
+  bottom: calc(100% + 4px);
+  z-index: 12;
+  max-width: 132px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(17, 20, 23, 0.86);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+  color: rgba(255, 254, 249, 0.92);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.25;
+  opacity: 0;
+  padding: 4px 6px;
+  pointer-events: none;
+  transform: translateY(2px);
+  transition:
+    opacity 60ms ease,
+    transform 60ms ease;
+  white-space: normal;
+}
+
+.pet-submenu-row[data-menu-title]:hover::before,
+.pet-submenu-row[data-menu-title]:focus-visible::before {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .pet-submenu-label {

@@ -1417,7 +1417,7 @@ function KanshanHoverMenu({
               onRetryMenuData={onRetryMenuData}
             >
               {propItems.map((item) => (
-                <button key={item.id} className="pet-submenu-row" type="button" role="menuitem" onClick={() => handleSelectProp(item)}>
+                <button key={item.id} className="pet-submenu-row" type="button" role="menuitem" data-menu-title={item.rewardHint} onClick={() => handleSelectProp(item)}>
                   <span className="pet-submenu-label">
                     <PropItemIcon propId={item.id} />
                     <span>{item.name}</span>
@@ -1440,7 +1440,7 @@ function KanshanHoverMenu({
               onRetryMenuData={onRetryMenuData}
             >
               {taskItems.map((item) => (
-                <button key={item.id} className="pet-submenu-row" type="button" role="menuitem" disabled={item.action === 'disabled' || item.availableCount >= item.totalCount} title={item.disabledHint} onClick={() => handleSelectTask(item)}>
+                <button key={item.id} className="pet-submenu-row" type="button" role="menuitem" disabled={item.action === 'disabled' || item.availableCount >= item.totalCount} data-menu-title={item.disabledHint ?? item.rewardHint} onClick={() => handleSelectTask(item)}>
                   <span>{item.taskName}</span>
                   <strong>{item.availableCount}/{item.totalCount}</strong>
                 </button>
