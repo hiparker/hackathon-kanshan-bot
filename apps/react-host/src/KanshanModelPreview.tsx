@@ -27,10 +27,13 @@ type DesktopMonitorInfo = Awaited<ReturnType<TauriWindowApi['availableMonitors']
 type DesktopMonitorWorkArea = DesktopMonitorInfo['workArea'];
 type DesktopWindowDragState = {
   appWindow: ReturnType<TauriWindowApi['getCurrentWindow']>;
+  beginStarted: boolean;
   coreApi: TauriCoreApi;
   monitors: DesktopMonitorInfo[];
   pointerId: number;
   scale: number;
+  startClientX: number;
+  startClientY: number;
   stagePointerX: number;
   stagePointerY: number;
   stageViewportLeft: number;
@@ -41,6 +44,7 @@ type DesktopWindowDragState = {
 const STAGE_SIZE = 300;
 /** 桌面端仅舞台中心 50% 触发窗口拖动；整舞台仍接收事件以兼顾菜单/气泡悬停。 */
 const DESKTOP_WINDOW_DRAG_MARGIN_FRAC = 0.25;
+const DESKTOP_WINDOW_DRAG_SNAP_THRESHOLD_PX = 6;
 const INTERACTION_GRACE_MS = 420;
 const ZHIDA_AI_URL = 'https://zhida.ai/';
 const KANSHAN_LIKE_URL = 'https://www.zhihu.com/hackathon/project/23';
@@ -802,17 +806,18 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
               appWindow.scaleFactor(),
               windowApi.availableMonitors(),
             ]);
-            await coreApi.invoke('kanshan_begin_window_drag');
             if (desktopDragSerialRef.current !== serialAtDown) {
-              await coreApi.invoke('kanshan_end_window_drag');
               return;
             }
             desktopWindowDragRef.current = {
               appWindow,
+              beginStarted: false,
               coreApi,
               monitors,
               pointerId: event.pointerId,
               scale,
+              startClientX: event.clientX,
+              startClientY: event.clientY,
               stagePointerX: event.clientX - stageRect.left,
               stagePointerY: event.clientY - stageRect.top,
               stageViewportLeft: stageRect.left,
@@ -850,7 +855,20 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
 
     const handleStageDragMove = (event: React.PointerEvent<HTMLElement>) => {
       if (desktopMode) {
-        if (!desktopWindowDragRef.current) return;
+        const drag = desktopWindowDragRef.current;
+        if (!drag) return;
+        if (!drag.beginStarted) {
+          if (Math.hypot(event.clientX - drag.startClientX, event.clientY - drag.startClientY) < DESKTOP_WINDOW_DRAG_SNAP_THRESHOLD_PX) {
+            return;
+          }
+          drag.beginStarted = true;
+          void drag.coreApi.invoke('kanshan_begin_window_drag').catch((error) => {
+            desktopWindowDragRef.current = null;
+            isStageDraggingRef.current = false;
+            setIsStageDragging(false);
+            console.warn('[kanshan] failed to start desktop window drag', error);
+          });
+        }
         event.preventDefault();
         return;
       }
@@ -874,7 +892,9 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
           try {
             const coreApi = desktopCoreApiRef.current ?? (await import('@tauri-apps/api/core'));
             desktopCoreApiRef.current = coreApi;
-            await coreApi.invoke('kanshan_end_window_drag');
+            if (drag?.beginStarted) {
+              await coreApi.invoke('kanshan_end_window_drag');
+            }
           } catch {
             /* ignore */
           }
@@ -894,6 +914,10 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
         isStageDraggingRef.current = false;
         setIsStageDragging(false);
         event.preventDefault();
+
+        if (!drag.beginStarted || Math.hypot(event.clientX - drag.startClientX, event.clientY - drag.startClientY) < DESKTOP_WINDOW_DRAG_SNAP_THRESHOLD_PX) {
+          return;
+        }
 
         void (async () => {
           try {
@@ -1029,6 +1053,15 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
       });
     };
 
+    const handleStageDoubleClick = (event: React.MouseEvent<HTMLElement>) => {
+      if (!isCanvasDragTarget(event.target)) return;
+      if (needsLogin || isStageDraggingRef.current) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      playPatAction();
+    };
+
     useEffect(() => {
       playbackModeRef.current = 'semantic';
       const actionMeta = kanshanActionMeta[activeAction];
@@ -1057,6 +1090,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
         onPointerMove={handleStageDragMove}
         onPointerUp={handleStageDragEnd}
         onPointerCancel={handleStageDragEnd}
+        onDoubleClick={handleStageDoubleClick}
         onPointerEnter={() => {
           clearStageHoverGraceTimer();
           setIsStageHovered(true);

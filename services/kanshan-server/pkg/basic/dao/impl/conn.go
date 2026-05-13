@@ -89,3 +89,6 @@ func NewInteractionCountDao() dao.InteractionCountDao { return &interactionCount
 
 // NewStatsDao returns a dao.StatsDao backed by the package-level connection.
 func NewStatsDao() dao.StatsDao { return &statsDao{db: mustConn()} }
+
+// NewChatHistoryDao returns a dao.ChatHistoryDao backed by the package-level connection.
+func NewChatHistoryDao() dao.ChatHistoryDao { return &chatHistoryDao{db: mustConn()} }

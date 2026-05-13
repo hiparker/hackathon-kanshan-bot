@@ -3,6 +3,7 @@ package chat
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/basic/dao"
+	daoimpl "github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/basic/dao/impl"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/basic/util/httpx"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/basic/util/session"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/core/service"
@@ -28,18 +31,21 @@ const (
 )
 
 type Handler struct {
-	petSvc service.PetStateService
-	client *http.Client
+	history dao.ChatHistoryDao
+	petSvc  service.PetStateService
+	client  *http.Client
 }
 
 func New() *Handler {
 	return &Handler{
-		petSvc: serviceimpl.NewPetStateService(),
-		client: &http.Client{Timeout: chatTimeout()},
+		history: daoimpl.NewChatHistoryDao(),
+		petSvc:  serviceimpl.NewPetStateService(),
+		client:  &http.Client{Timeout: chatTimeout()},
 	}
 }
 
 func (h *Handler) Routes(r chi.Router) {
+	r.Get("/history", h.historyList)
 	r.Post("/completions", h.completions)
 }
 
@@ -51,6 +57,31 @@ type chatMessage struct {
 type completionRequest struct {
 	Messages []chatMessage `json:"messages"`
 	Stream   bool          `json:"stream"`
+}
+
+type chatTurnResponse struct {
+	ID        int64  `json:"id"`
+	Query     string `json:"query"`
+	Answer    string `json:"answer"`
+	CreatedAt int64  `json:"created_at"`
+}
+
+type historyResponse struct {
+	Turns []chatTurnResponse `json:"turns"`
+}
+
+func (h *Handler) historyList(w http.ResponseWriter, r *http.Request) {
+	userID := session.UserID(r.Context())
+	turns, err := h.history.ListRecent(r.Context(), userID, chatHistoryLimit())
+	if err != nil {
+		errx.WriteServiceError(w, service.ErrInternal, nil)
+		return
+	}
+	out := make([]chatTurnResponse, 0, len(turns))
+	for _, turn := range turns {
+		out = append(out, toChatTurnResponse(turn))
+	}
+	httpx.WriteJSON(w, http.StatusOK, historyResponse{Turns: out})
 }
 
 func (h *Handler) completions(w http.ResponseWriter, r *http.Request) {
@@ -78,10 +109,16 @@ func (h *Handler) completions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userQuery := latestUserQuery(req.Messages)
+	upstreamMessages, err := h.buildMessages(r.Context(), userID, req.Messages)
+	if err != nil {
+		errx.WriteServiceError(w, service.ErrInternal, nil)
+		return
+	}
 	upstreamBody := map[string]any{
 		"model":    envOr("ZHIHU_CHAT_MODEL", defaultZhihuChatModel),
 		"stream":   req.Stream,
-		"messages": normalizeMessagesForUpstream(req.Messages, mergeSystemToUser()),
+		"messages": normalizeMessagesForUpstream(upstreamMessages, mergeSystemToUser()),
 	}
 	payload, err := json.Marshal(upstreamBody)
 	if err != nil {
@@ -132,19 +169,67 @@ func (h *Handler) completions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(res.StatusCode)
-	if err := copyAndFlush(w, res.Body); err != nil {
+	answer, err := copyAndFlush(w, res.Body)
+	if err != nil {
 		return
 	}
+	h.appendHistory(r.Context(), userID, userQuery, answer)
 }
 
-func copyAndFlush(w http.ResponseWriter, r io.Reader) error {
+func (h *Handler) buildMessages(ctx context.Context, userID string, messages []chatMessage) ([]chatMessage, error) {
+	turns, err := h.history.ListRecent(ctx, userID, chatHistoryLimit())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]chatMessage, 0, len(messages)+len(turns)*2)
+	inserted := false
+	for _, message := range messages {
+		out = append(out, message)
+		if !inserted && message.Role == "system" {
+			out = append(out, turnsToMessages(turns)...)
+			inserted = true
+		}
+	}
+	if !inserted {
+		out = append(turnsToMessages(turns), out...)
+	}
+	return out, nil
+}
+
+func turnsToMessages(turns []dao.ChatTurn) []chatMessage {
+	out := make([]chatMessage, 0, len(turns)*2)
+	for _, turn := range turns {
+		out = append(out,
+			chatMessage{Role: "user", Content: turn.Query},
+			chatMessage{Role: "assistant", Content: turn.Answer},
+		)
+	}
+	return out
+}
+
+func (h *Handler) appendHistory(ctx context.Context, userID, query, answer string) {
+	query = strings.TrimSpace(query)
+	answer = strings.TrimSpace(answer)
+	if query == "" || answer == "" {
+		return
+	}
+	_, _ = h.history.Append(ctx, userID, query, answer, chatHistoryLimit())
+}
+
+func copyAndFlush(w http.ResponseWriter, r io.Reader) (string, error) {
 	flusher, _ := w.(http.Flusher)
 	buffer := make([]byte, 4096)
+	var sseBuffer string
+	var answer strings.Builder
 	for {
 		n, readErr := r.Read(buffer)
 		if n > 0 {
+			chunk := string(buffer[:n])
+			sseBuffer = consumeSSEBuffer(sseBuffer+chunk, func(text string) {
+				answer.WriteString(text)
+			})
 			if _, writeErr := w.Write(buffer[:n]); writeErr != nil {
-				return writeErr
+				return answer.String(), writeErr
 			}
 			if flusher != nil {
 				flusher.Flush()
@@ -152,9 +237,14 @@ func copyAndFlush(w http.ResponseWriter, r io.Reader) error {
 		}
 		if readErr != nil {
 			if readErr == io.EOF {
-				return nil
+				if strings.TrimSpace(sseBuffer) != "" {
+					consumeSSEBuffer(sseBuffer+"\n\n", func(text string) {
+						answer.WriteString(text)
+					})
+				}
+				return answer.String(), nil
 			}
-			return readErr
+			return answer.String(), readErr
 		}
 	}
 }
@@ -171,6 +261,61 @@ func validMessages(messages []chatMessage) bool {
 		}
 	}
 	return true
+}
+
+func latestUserQuery(messages []chatMessage) string {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" {
+			return messages[i].Content
+		}
+	}
+	return ""
+}
+
+type streamChunk struct {
+	Choices []struct {
+		Delta struct {
+			Content string `json:"content"`
+		} `json:"delta"`
+	} `json:"choices"`
+}
+
+func consumeSSEBuffer(buffer string, onText func(string)) string {
+	parts := strings.Split(buffer, "\n\n")
+	nextBuffer := parts[len(parts)-1]
+	for _, part := range parts[:len(parts)-1] {
+		payloadLines := make([]string, 0, 1)
+		for _, line := range strings.Split(part, "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "data:") {
+				payloadLines = append(payloadLines, strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+			}
+		}
+		payload := strings.Join(payloadLines, "\n")
+		if payload == "" || payload == "[DONE]" {
+			continue
+		}
+		var chunk streamChunk
+		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
+			continue
+		}
+		if len(chunk.Choices) == 0 {
+			continue
+		}
+		if text := chunk.Choices[0].Delta.Content; text != "" {
+			onText(text)
+		}
+	}
+	return nextBuffer
+}
+
+func toChatTurnResponse(turn dao.ChatTurn) chatTurnResponse {
+	return chatTurnResponse{
+		ID:        turn.ID,
+		Query:     turn.Query,
+		Answer:    turn.Answer,
+		CreatedAt: turn.CreatedAt,
+	}
 }
 
 func normalizeMessagesForUpstream(messages []chatMessage, mergeSystem bool) []chatMessage {
@@ -236,4 +381,19 @@ func mergeSystemToUser() bool {
 		return true
 	}
 	return value == "1" || value == "true" || value == "yes" || value == "on" || value == "y"
+}
+
+func chatHistoryLimit() int {
+	value := strings.TrimSpace(os.Getenv("ZHIHU_CHAT_HISTORY_LIMIT"))
+	if value == "" {
+		return 10
+	}
+	limit, err := strconv.Atoi(value)
+	if err != nil || limit <= 0 {
+		return 10
+	}
+	if limit > 50 {
+		return 50
+	}
+	return limit
 }

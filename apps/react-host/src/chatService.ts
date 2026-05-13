@@ -8,6 +8,13 @@ export interface StreamChatOptions {
   signal?: AbortSignal;
 }
 
+export interface ChatHistoryTurn {
+  id: number;
+  query: string;
+  answer: string;
+  createdAt: number;
+}
+
 interface OpenAiStreamDelta {
   content?: string;
 }
@@ -24,6 +31,7 @@ const DEFAULT_API_BASE_URL = import.meta.env.PROD ? 'https://kanshan.bedebug.com
 const CONFIGURED_API_BASE_URL = import.meta.env.VITE_KANSHAN_API_BASE_URL || DEFAULT_API_BASE_URL;
 const API_PREFIX = import.meta.env.PROD ? `${CONFIGURED_API_BASE_URL.replace(/\/$/, '')}/api` : '/api';
 const CHAT_COMPLETIONS_URL = `${API_PREFIX}/chat/completions`;
+const CHAT_HISTORY_URL = `${API_PREFIX}/chat/history`;
 const AUTH_STORAGE_KEY = 'kanshan.session';
 const IS_DESKTOP_MODE = import.meta.env.MODE === 'desktop' || import.meta.env.VITE_KANSHAN_DESKTOP === 'true';
 const DESKTOP_SESSION_TOKEN = import.meta.env.VITE_KANSHAN_DESKTOP_SESSION_TOKEN || 's_u_local-dev';
@@ -72,6 +80,29 @@ function getSessionToken(): string {
   } catch {
     return IS_DESKTOP_MODE ? DESKTOP_SESSION_TOKEN : '';
   }
+}
+
+export async function fetchChatHistory(): Promise<ChatHistoryTurn[]> {
+  const headers: Record<string, string> = {};
+  const sessionToken = getSessionToken();
+  if (sessionToken) {
+    headers['X-Session-Token'] = sessionToken;
+  }
+
+  const response = await fetch(CHAT_HISTORY_URL, { headers });
+  if (!response.ok) {
+    const errorText = await response.text();
+    const message = parseChatErrorMessage(errorText) ?? errorText;
+    throw new Error(`Chat history request failed with status ${response.status}: ${message}`);
+  }
+
+  const body = await response.json() as { turns?: Array<{ id: number; query: string; answer: string; created_at: number }> };
+  return (body.turns ?? []).map((turn) => ({
+    id: turn.id,
+    query: turn.query,
+    answer: turn.answer,
+    createdAt: turn.created_at,
+  }));
 }
 
 async function fetchOpenAiStream(

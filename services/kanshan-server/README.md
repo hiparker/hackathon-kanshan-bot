@@ -152,6 +152,7 @@ basic/dao/impl    → db（仅为读 embed.FS）
 | `ZHIHU_CHAT_MODEL` | `zhida-fast-1p5` | 后端代理调用的底层模型名 |
 | `ZHIHU_CHAT_TIMEOUT_SEC` | `45` | 后端代理等待模型服务响应的超时时间，单位秒 |
 | `ZHIHU_CHAT_MERGE_SYSTEM_TO_USER` | `true` | 是否把 `system` 消息合并进第一条 `user` 消息；用于兼容不稳定支持 `system` 的模型 |
+| `ZHIHU_CHAT_HISTORY_LIMIT` | `10` | 每个用户保留的最近多轮对话轮数，每轮包含 query 和 answer |
 | `ZHIHU_CHAT_ACCESS_SECRET` |  | 知乎模型服务 Access Secret，勿提交真实值 |
 
 ## 开发命令

@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/basic/dao"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/basic/util/session"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/core/service"
 )
@@ -17,6 +18,21 @@ import (
 type fakePetStateService struct {
 	pet service.PetSnapshot
 	err error
+}
+
+type fakeChatHistoryDao struct {
+	turns    []dao.ChatTurn
+	appended []dao.ChatTurn
+}
+
+func (d *fakeChatHistoryDao) ListRecent(context.Context, string, int) ([]dao.ChatTurn, error) {
+	return d.turns, nil
+}
+
+func (d *fakeChatHistoryDao) Append(_ context.Context, userID, query, answer string, _ int) (dao.ChatTurn, error) {
+	turn := dao.ChatTurn{ID: int64(len(d.appended) + 1), UserID: userID, Query: query, Answer: answer}
+	d.appended = append(d.appended, turn)
+	return turn, nil
 }
 
 func TestNormalizeMessagesCanKeepSystemRole(t *testing.T) {
@@ -58,7 +74,7 @@ func (s fakePetStateService) CompleteItemUse(context.Context, string, *string, s
 
 func TestCompletionsRejectsZeroSpirit(t *testing.T) {
 	t.Setenv("ZHIHU_CHAT_ACCESS_SECRET", "test-secret")
-	h := &Handler{petSvc: fakePetStateService{pet: service.PetSnapshot{UserID: "u1", Spirit: 0}}, client: http.DefaultClient}
+	h := &Handler{history: &fakeChatHistoryDao{}, petSvc: fakePetStateService{pet: service.PetSnapshot{UserID: "u1", Spirit: 0}}, client: http.DefaultClient}
 	recorder := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/chat/completions", strings.NewReader(`{"stream":true,"messages":[{"role":"user","content":"hi"}]}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -85,7 +101,8 @@ func TestCompletionsForwardsAuthHeaders(t *testing.T) {
 
 	t.Setenv("ZHIHU_CHAT_COMPLETIONS_URL", upstream.URL)
 	t.Setenv("ZHIHU_CHAT_ACCESS_SECRET", "test-secret")
-	h := &Handler{petSvc: fakePetStateService{pet: service.PetSnapshot{UserID: "u1", Spirit: 1}}, client: upstream.Client()}
+	history := &fakeChatHistoryDao{turns: []dao.ChatTurn{{Query: "old q", Answer: "old a"}}}
+	h := &Handler{history: history, petSvc: fakePetStateService{pet: service.PetSnapshot{UserID: "u1", Spirit: 1}}, client: upstream.Client()}
 	recorder := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/chat/completions", strings.NewReader(`{"stream":true,"messages":[{"role":"system","content":"short"},{"role":"user","content":"hi"}]}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -101,8 +118,14 @@ func TestCompletionsForwardsAuthHeaders(t *testing.T) {
 	if gotTimestamp == "" {
 		t.Fatal("X-Request-Timestamp is empty")
 	}
-	if len(gotBody.Messages) != 1 || gotBody.Messages[0].Role != "user" || !strings.Contains(gotBody.Messages[0].Content, "short") || !strings.Contains(gotBody.Messages[0].Content, "hi") {
+	if len(gotBody.Messages) != 3 || gotBody.Messages[0].Role != "user" || gotBody.Messages[1].Role != "assistant" || gotBody.Messages[2].Role != "user" {
 		t.Fatalf("unexpected upstream messages: %+v", gotBody.Messages)
+	}
+	if !strings.Contains(gotBody.Messages[0].Content, "short") || !strings.Contains(gotBody.Messages[0].Content, "old q") || !strings.Contains(gotBody.Messages[2].Content, "hi") {
+		t.Fatalf("unexpected upstream content: %+v", gotBody.Messages)
+	}
+	if len(history.appended) != 1 || history.appended[0].Query != "hi" || history.appended[0].Answer != "hi" {
+		t.Fatalf("unexpected appended history: %+v", history.appended)
 	}
 }
 
@@ -110,7 +133,7 @@ func TestRouterRequiresSession(t *testing.T) {
 	t.Setenv("ZHIHU_CHAT_ACCESS_SECRET", "test-secret")
 	r := chi.NewRouter()
 	r.Use(session.Required)
-	(&Handler{petSvc: fakePetStateService{pet: service.PetSnapshot{UserID: "u1", Spirit: 1}}, client: http.DefaultClient}).Routes(r)
+	(&Handler{history: &fakeChatHistoryDao{}, petSvc: fakePetStateService{pet: service.PetSnapshot{UserID: "u1", Spirit: 1}}, client: http.DefaultClient}).Routes(r)
 
 	recorder := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/completions", strings.NewReader(`{"stream":true,"messages":[{"role":"user","content":"hi"}]}`))

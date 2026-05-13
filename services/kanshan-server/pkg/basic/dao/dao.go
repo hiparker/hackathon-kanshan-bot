@@ -73,6 +73,16 @@ type StatsEvent struct {
 	OccurredAt int64
 }
 
+// ChatTurn mirrors one persisted user/assistant exchange.
+type ChatTurn struct {
+	ID        int64
+	UserID    string
+	Query     string
+	Answer    string
+	CreatedAt int64
+	UpdatedAt int64
+}
+
 // ===== Errors =====
 
 // ErrNotFound is returned by Find/Get methods when the row is absent.
@@ -141,4 +151,10 @@ type InteractionCountDao interface {
 type StatsDao interface {
 	// Append writes one event. Idempotency / aggregation is the service layer's job.
 	Append(ctx context.Context, e StatsEvent) error
+}
+
+// ChatHistoryDao persists recent chat turns per user.
+type ChatHistoryDao interface {
+	ListRecent(ctx context.Context, userID string, limit int) ([]ChatTurn, error)
+	Append(ctx context.Context, userID, query, answer string, keep int) (ChatTurn, error)
 }

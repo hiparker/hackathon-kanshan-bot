@@ -41,7 +41,7 @@ import {
   pickKanshanMarketDialogueCandidate,
   connectKanshanMarketStream,
 } from './kanshanMarketStream';
-import { streamChat } from './chatService';
+import { fetchChatHistory, streamChat } from './chatService';
 
 type MenuDataStatus = 'idle' | 'loading' | 'ready' | 'error';
 type AuthStatus = 'checking' | 'authenticated' | 'unauthenticated' | 'redirecting';
@@ -107,6 +107,7 @@ export function App() {
   const isSendingRef = useRef(false);
   const chatInputRef = useRef('');
   const lastChatInteractionAtRef = useRef(0);
+  const playActionRef = useRef<(action: PetAction) => void>(() => {});
   const semanticClipRows = kanshanRawClipConfig.map((item) => ({
     semanticClipName: item.label,
     rawClipName: item.clipName,
@@ -228,6 +229,24 @@ export function App() {
       unlisten?.();
     };
   }, []);
+
+  useEffect(() => {
+    if (!IS_DESKTOP_MODE || authStatus !== 'authenticated') return;
+    let isCurrent = true;
+    fetchChatHistory()
+      .then((turns) => {
+        if (!isCurrent) return;
+        const latestTurn = turns.at(-1);
+        if (!latestTurn) return;
+        setLastUserMessage(latestTurn.query);
+        setChatText(latestTurn.answer);
+        setDialogueSource('chat');
+      })
+      .catch(() => {});
+    return () => {
+      isCurrent = false;
+    };
+  }, [authStatus]);
 
   useEffect(() => {
     let unlistenSignOut: (() => void) | null = null;
@@ -381,6 +400,8 @@ export function App() {
   const fetchAndApplyDefaultState = useCallback(async () => {
     const nextDefaultState = await fetchKanshanDefaultState();
     applyDefaultState(nextDefaultState);
+    const hintedAction = resolveActionHint(nextDefaultState.actionHint ?? '');
+    if (hintedAction) playActionRef.current(hintedAction);
     void refreshPetStats().catch(() => {});
     return nextDefaultState;
   }, [applyDefaultState, refreshPetStats]);
@@ -395,7 +416,11 @@ export function App() {
 
       fetchAndStoreDefaultState()
         .then((nextDefaultState) => {
-          if (isFollowingDefaultRef.current) applyDefaultState(nextDefaultState);
+          if (isFollowingDefaultRef.current) {
+            applyDefaultState(nextDefaultState);
+            const hintedAction = resolveActionHint(nextDefaultState.actionHint ?? '');
+            if (hintedAction) playActionRef.current(hintedAction);
+          }
         })
         .finally(scheduleDefaultStatePoll);
     }, DEFAULT_STATE_POLL_MS);
@@ -411,7 +436,11 @@ export function App() {
 
         if (propsResult.status === 'fulfilled') setPropItems(propsResult.value);
         if (tasksResult.status === 'fulfilled') setTaskItems(tasksResult.value);
-        if (defaultStateResult.status === 'fulfilled') applyDefaultState(defaultStateResult.value);
+        if (defaultStateResult.status === 'fulfilled') {
+          applyDefaultState(defaultStateResult.value);
+          const hintedAction = resolveActionHint(defaultStateResult.value.actionHint ?? '');
+          if (hintedAction) playActionRef.current(hintedAction);
+        }
         if (petStateResult.status === 'fulfilled') setPetStats(petSnapshotToStats(petStateResult.value));
 
         setMenuDataStatus(propsResult.status === 'fulfilled' || tasksResult.status === 'fulfilled' ? 'ready' : 'error');
@@ -456,6 +485,10 @@ export function App() {
     if (meta?.terminal) setIsDead(true);
     if (action === 'revive') setIsDead(false);
   }, [clearTemporaryFallbackTimer, isDead]);
+
+  useEffect(() => {
+    playActionRef.current = playAction;
+  }, [playAction]);
 
   useEffect(() => {
     if (authStatus !== 'authenticated') return;

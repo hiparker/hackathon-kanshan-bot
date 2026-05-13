@@ -111,9 +111,9 @@
   },
   "item_action_rewards": {
     "high_happiness_threshold": 85,
-    "high_happiness_probability": 0.3,
+    "high_happiness_probability": 1,
     "medium_happiness_threshold": 65,
-    "medium_happiness_probability": 0.1,
+    "medium_happiness_probability": 0.5,
     "action_hint": "happy-temporary"
   }
 }

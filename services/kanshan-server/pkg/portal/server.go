@@ -85,6 +85,7 @@ func New(logger *slog.Logger) http.Handler {
 			"GET /api/distill/mock-corpus",
 			"POST /api/distill/profile",
 			"POST /api/distill/snippets",
+			"GET /api/chat/history",
 			"POST /api/chat/completions",
 		},
 	)
