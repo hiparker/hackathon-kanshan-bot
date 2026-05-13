@@ -7,6 +7,8 @@ import UnicornScene from 'unicornstudio-react';
 const MAC_ARM_DOWNLOAD_URL = import.meta.env.VITE_KANSHAN_DOWNLOAD_MAC_ARM_URL || 'https://upload.bedebug.com/hackathon-2026/kanshan-darwin-aarch64.zip';
 const MAC_INTEL_DOWNLOAD_URL = import.meta.env.VITE_KANSHAN_DOWNLOAD_MAC_INTEL_URL || 'https://github.com/hiparker/hackathon-kanshan-bot/releases/download/v1.0.10/_1.0.4_x64.dmg';
 const WINDOWS_DOWNLOAD_URL = import.meta.env.VITE_KANSHAN_DOWNLOAD_WINDOWS_URL || 'https://upload.bedebug.com/hackathon-2026/kanshan-exe.zip';
+/** 「前往点赞支持」跳转；可用 VITE_KANSHAN_ZHIHU_SUPPORT_URL 覆盖 */
+const ZHIHU_SUPPORT_LIKE_URL = 'https://www.zhihu.com/pin/2037137126333096270';
 
 export interface OverviewPageProps {
   shellClass: string;
@@ -317,9 +319,15 @@ export function OverviewPage({
               <p className="overview-support__text">
                 让我们一起，把这份陪伴带给全网用户。
               </p>
-              <button type="button" className="overview-btn overview-btn--blue overview-btn--block">
+              <a
+                href={ZHIHU_SUPPORT_LIKE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="overview-btn overview-btn--blue overview-btn--block"
+                style={{ textDecoration: 'none' }}
+              >
                 💖 前往点赞支持
-              </button>
+              </a>
             </section>
 
             <section className="overview-card overview-card--preview">
