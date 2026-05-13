@@ -50,16 +50,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build macOS app and DMG
-        run: pnpm --filter @kanshan/desktop-tauri run ${{ matrix.pnpm_script }}
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
       - name: Detect macOS signing status
         id: macos_signing
         shell: bash
@@ -72,11 +62,54 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
-          if [[ -n "$APPLE_CERTIFICATE" && -n "$APPLE_CERTIFICATE_PASSWORD" && -n "$APPLE_SIGNING_IDENTITY" && -n "$APPLE_ID" && -n "$APPLE_PASSWORD" && -n "$APPLE_TEAM_ID" ]]; then
-            echo "suffix=signed" >> "$GITHUB_OUTPUT"
-          else
+
+          if [[ -z "$APPLE_CERTIFICATE" || -z "$APPLE_CERTIFICATE_PASSWORD" || -z "$APPLE_SIGNING_IDENTITY" || -z "$APPLE_ID" || -z "$APPLE_PASSWORD" || -z "$APPLE_TEAM_ID" ]]; then
             echo "suffix=unsigned" >> "$GITHUB_OUTPUT"
+            echo "should_sign=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          cert_file="$RUNNER_TEMP/macos-signing-certificate.p12"
+          check_keychain="$RUNNER_TEMP/macos-signing-check.keychain-db"
+          check_keychain_password="$(uuidgen)"
+
+          if ! printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$cert_file" 2>/dev/null; then
+            echo "macOS signing certificate is not valid base64. Building unsigned artifacts."
+            echo "suffix=unsigned" >> "$GITHUB_OUTPUT"
+            echo "should_sign=false" >> "$GITHUB_OUTPUT"
+            rm -f "$cert_file"
+            exit 0
+          fi
+
+          security create-keychain -p "$check_keychain_password" "$check_keychain"
+          security unlock-keychain -p "$check_keychain_password" "$check_keychain"
+
+          if security import "$cert_file" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$check_keychain" >/dev/null 2>&1; then
+            echo "suffix=signed" >> "$GITHUB_OUTPUT"
+            echo "should_sign=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "macOS signing certificate could not be imported. Building unsigned artifacts."
+            echo "suffix=unsigned" >> "$GITHUB_OUTPUT"
+            echo "should_sign=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          security delete-keychain "$check_keychain" >/dev/null 2>&1 || true
+          rm -f "$cert_file"
+
+      - name: Build macOS app and DMG
+        if: steps.macos_signing.outputs.should_sign == 'true'
+        run: pnpm --filter @kanshan/desktop-tauri run ${{ matrix.pnpm_script }}
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Build unsigned macOS app and DMG
+        if: steps.macos_signing.outputs.should_sign != 'true'
+        run: pnpm --filter @kanshan/desktop-tauri run ${{ matrix.pnpm_script }}
 
       - name: Rename macOS artifacts
         shell: bash
