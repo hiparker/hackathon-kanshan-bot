@@ -327,6 +327,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     embedInPanel = false,
     actionRevision,
     activeAction,
+    chatError,
     chatInput,
     desktopMode = false,
     dialogueLinkUrl,
@@ -1085,6 +1086,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
         <BubbleDialogue
           actionDialogueText={actionDialogueText}
           bubbleMode={bubbleMode}
+          chatError={chatError}
           chatDialoguePageIndex={chatDialoguePageIndex}
           chatDialoguePages={chatDialoguePages}
           chatShellRef={chatShellRef}
@@ -1155,6 +1157,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
 interface BubbleDialogueProps {
   actionDialogueText: string;
   bubbleMode: BubbleMode;
+  chatError: string;
   chatDialoguePageIndex: number;
   chatDialoguePages: string[];
   chatShellRef: React.MutableRefObject<HTMLDivElement | null>;
@@ -1168,6 +1171,7 @@ interface BubbleDialogueProps {
 function BubbleDialogue({
   actionDialogueText,
   bubbleMode,
+  chatError,
   chatDialoguePageIndex,
   chatDialoguePages,
   chatShellRef,
@@ -1179,7 +1183,7 @@ function BubbleDialogue({
 }: BubbleDialogueProps) {
   const hasTrimmedDialogue = bubbleMode === 'chat' && chatDialoguePages.length > 1;
   const resolvedDialogueText = bubbleMode === 'chat'
-    ? (chatDialoguePages[chatDialoguePageIndex] ?? chatDialoguePages.at(-1) ?? '')
+    ? (chatError || chatDialoguePages[chatDialoguePageIndex] || chatDialoguePages.at(-1) || '')
     : actionDialogueText;
   const displayedChatDialogueText = resolvedDialogueText
     || (isDialogueStreaming ? '看山正在回复…' : CHAT_DIALOGUE_EMPTY_TEXT);

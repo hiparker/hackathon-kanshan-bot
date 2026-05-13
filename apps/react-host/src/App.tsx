@@ -641,10 +641,11 @@ export function App() {
       setChatInput('');
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return;
+      const message = error instanceof Error ? error.message : String(error);
       clearChatDisplayTimer();
       pendingChatTextRef.current = '';
-      setChatError('对话暂时失败了，请稍后再试。');
-      setChatText((current) => current || '我刚才没听清，再说一次。');
+      setChatError(message || '对话暂时失败了，请稍后再试。');
+      setChatText((current) => current || message || '我刚才没听清，再说一次。');
     } finally {
       if (chatAbortControllerRef.current === abortController) {
         chatAbortControllerRef.current = null;

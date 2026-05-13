@@ -148,6 +148,11 @@ basic/dao/impl    → db（仅为读 embed.FS）
 | `MARKET_ZHIHU_HOT_TOP_CNT` | `50` | 知乎热榜拉取数量 |
 | `MARKET_ZHIHU_HOT_PUBLISH_IN_HOURS` | `48` | 知乎热榜发布时间范围（小时） |
 | `ZHIHU_OAUTH_*` |  | P0 不使用，P3 接入 OAuth2 时填 |
+| `ZHIHU_CHAT_COMPLETIONS_URL` | `https://developer.zhihu.com/v1/chat/completions` | 知乎模型服务 Chat Completions 接口，可替换为其他兼容接口 |
+| `ZHIHU_CHAT_MODEL` | `zhida-fast-1p5` | 后端代理调用的底层模型名 |
+| `ZHIHU_CHAT_TIMEOUT_SEC` | `45` | 后端代理等待模型服务响应的超时时间，单位秒 |
+| `ZHIHU_CHAT_MERGE_SYSTEM_TO_USER` | `true` | 是否把 `system` 消息合并进第一条 `user` 消息；用于兼容不稳定支持 `system` 的模型 |
+| `ZHIHU_CHAT_ACCESS_SECRET` |  | 知乎模型服务 Access Secret，勿提交真实值 |
 
 ## 开发命令
 
