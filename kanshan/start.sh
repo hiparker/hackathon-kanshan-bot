@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================
 # 刘看山服务启动脚本
-# 功能：启动 kanshan 相关服务（后端 + 前端）
+# 功能：启动 kanshan 相关服务（后端 + 前端 + sidecar）
 # ============================================
 
 set -e
@@ -51,7 +51,7 @@ stop_existing_services() {
     echo -e "${YELLOW}🧹 清理现有服务...${NC}"
     
     # 停止端口上的服务
-    for port in 8000 5174; do
+    for port in 8000 5174 8788; do
         pids=$(lsof -ti:$port 2>/dev/null || true)
         if [ -n "$pids" ]; then
             echo -e "  停止端口 $port 上的服务 (PID: $pids)"
@@ -99,6 +99,27 @@ start_backend() {
     cd "$SCRIPT_DIR"
 }
 
+# 启动 sidecar
+start_sidecar() {
+    echo ""
+    echo -e "${YELLOW}🚀 启动 Sidecar 服务...${NC}"
+    cd "$SCRIPT_DIR/sidecar"
+    
+    # 安装依赖（如果需要）
+    if [ ! -d "node_modules" ] || [ "package.json" -nt "node_modules" ]; then
+        echo -e "  ${YELLOW}📦 安装 Sidecar 依赖...${NC}"
+        npm install
+    fi
+    
+    # 启动 sidecar
+    echo -e "  ${GREEN}✅ 启动 Sidecar 服务（端口 8788）${NC}"
+    nohup npm run dev > "$SCRIPT_DIR/sidecar.log" 2>&1 &
+    SIDECAR_PID=$!
+    echo "  Sidecar PID: $SIDECAR_PID"
+    echo $SIDECAR_PID > "$SCRIPT_DIR/sidecar.pid"
+    cd "$SCRIPT_DIR"
+}
+
 # 启动前端
 start_frontend() {
     echo ""
@@ -124,6 +145,17 @@ start_frontend() {
 wait_for_services() {
     echo ""
     echo -e "${YELLOW}⏳ 等待服务启动...${NC}"
+    
+    # 等待 sidecar
+    echo -n "  等待 Sidecar（端口 8788）"
+    for i in {1..30}; do
+        if curl -s "http://localhost:8788/health" > /dev/null 2>&1; then
+            echo -e " ${GREEN}✅${NC}"
+            break
+        fi
+        echo -n "."
+        sleep 1
+    done
     
     # 等待后端
     echo -n "  等待后端（端口 8000）"
@@ -158,9 +190,10 @@ show_info() {
     echo -e "${BLUE}📱 访问地址：${NC}"
     echo -e "  前端界面:  ${GREEN}http://localhost:5174${NC}"
     echo -e "  后端 API:  ${GREEN}http://localhost:8000${NC}"
+    echo -e "  Sidecar:   ${GREEN}http://localhost:8788${NC}"
     echo ""
     echo -e "${BLUE}📋 管理命令：${NC}"
-    echo -e "  查看日志: tail -f backend.log / tail -f frontend.log"
+    echo -e "  查看日志: tail -f backend.log / tail -f frontend.log / tail -f sidecar.log"
     echo -e "  停止服务: ./stop.sh"
     echo -e "  运行测试: cd test && ./run_all.sh"
     echo ""
@@ -179,6 +212,7 @@ main() {
     stop_existing_services
     
     # 启动各服务
+    start_sidecar
     start_backend
     start_frontend
     
@@ -191,4 +225,3 @@ main() {
 
 # 运行主函数
 main
-

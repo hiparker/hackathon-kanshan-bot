@@ -67,10 +67,12 @@ main() {
     echo ""
     
     # 通过 PID 文件停止
+    stop_by_pidfile "Sidecar" "$SCRIPT_DIR/sidecar.pid"
     stop_by_pidfile "后端" "$SCRIPT_DIR/backend.pid"
     stop_by_pidfile "前端" "$SCRIPT_DIR/frontend.pid"
     
     # 通过端口停止（兜底方案）
+    stop_by_port 8788 "Sidecar"
     stop_by_port 8000 "后端"
     stop_by_port 5174 "前端"
     
@@ -82,4 +84,3 @@ main() {
 
 # 运行主函数
 main
-

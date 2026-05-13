@@ -13,3 +13,9 @@ data/*.db-shm
 node_modules/
 dist/
 .DS_Store
+.env.*
+*.pid
+*.log
+*.deps_installed
+sidecar/.deps_installed
+backend/.deps_installed
