@@ -75,6 +75,7 @@ export function App() {
   const embedInPanel = !IS_DESKTOP_MODE && pathname === '/';
   const previewRef = useRef<KanshanModelPreviewHandle | null>(null);
   const [defaultAction, setDefaultAction] = useState<PetAction>('idle');
+  const defaultActionRef = useRef<PetAction>('idle');
   const [activeAction, setActiveAction] = useState<PetAction>('idle');
   const [actionRevision, setActionRevision] = useState(0);
   const defaultStateTimerRef = useRef<number | null>(null);
@@ -378,6 +379,7 @@ export function App() {
 
   const applyDefaultState = useCallback((nextDefaultState: KanshanDefaultState) => {
     isFollowingDefaultRef.current = true;
+    defaultActionRef.current = nextDefaultState.action;
     setDefaultAction(nextDefaultState.action);
     setActiveAction(nextDefaultState.action);
     setActionRevision((current) => current + 1);
@@ -392,6 +394,7 @@ export function App() {
 
   const fetchAndStoreDefaultState = useCallback(async () => {
     const nextDefaultState = await fetchKanshanDefaultState();
+    defaultActionRef.current = nextDefaultState.action;
     setDefaultAction(nextDefaultState.action);
     if (nextDefaultState.action === 'idle') setIsDead(false);
     return nextDefaultState;
@@ -514,17 +517,26 @@ export function App() {
     };
   }, [applyMarketDialogue, authStatus, playAction]);
 
-  const finishTemporaryAction = useCallback(() => {
+  const returnToLocalDefaultAction = useCallback(() => {
+    const action = defaultActionRef.current;
+    isFollowingDefaultRef.current = true;
+    setActiveAction(action);
+    setActionRevision((current) => current + 1);
+    if (action === 'idle') setIsDead(false);
+  }, []);
+
+  const finishTemporaryAction = useCallback((force = false) => {
     const temporaryAction = temporaryActionRef.current;
     if (!temporaryAction) return;
 
     const remainingMs = temporaryAction.minEndAt - Date.now();
-    if (remainingMs > 0) {
+    if (!force && remainingMs > 0) {
       clearTemporaryFallbackTimer();
       const temporaryToken = temporaryAction.token;
       temporaryFallbackTimerRef.current = window.setTimeout(() => {
         if (temporaryActionRef.current?.token !== temporaryToken) return;
         temporaryActionRef.current = null;
+        returnToLocalDefaultAction();
         fetchAndApplyDefaultState().finally(scheduleDefaultStatePoll);
       }, remainingMs);
       return;
@@ -532,8 +544,9 @@ export function App() {
 
     clearTemporaryFallbackTimer();
     temporaryActionRef.current = null;
+    returnToLocalDefaultAction();
     fetchAndApplyDefaultState().finally(scheduleDefaultStatePoll);
-  }, [clearTemporaryFallbackTimer, fetchAndApplyDefaultState, refreshPetStats, scheduleDefaultStatePoll]);
+  }, [clearTemporaryFallbackTimer, fetchAndApplyDefaultState, returnToLocalDefaultAction, scheduleDefaultStatePoll]);
 
   const playDefaultAction = useCallback(() => {
     finishTemporaryAction();
@@ -562,7 +575,7 @@ export function App() {
     const meta = kanshanActionMeta[action];
     if (meta?.duration !== 'temporary' || meta.terminal) return;
 
-    finishTemporaryAction();
+    finishTemporaryAction(true);
   }, [finishTemporaryAction]);
 
   const showRewardToast = useCallback((reward: Exclude<RewardToast, null>) => {
@@ -586,13 +599,12 @@ export function App() {
     void useKanshanProp(item.id)
       .then(async ({ actionHint, newState }) => {
         const hintedAction = resolveActionHint(actionHint);
-        if (hintedAction) playAction(hintedAction);
-
         if (newState) {
           applyDefaultState(petSnapshotToDefaultState(newState));
-        } else {
+        } else if (!hintedAction) {
           await fetchAndApplyDefaultState();
         }
+        if (hintedAction) playAction(hintedAction);
 
         const shouldProgressFeedTask = item.id === 'fish-jerky' || item.id === 'nutrition-can';
         if (shouldProgressFeedTask) {
