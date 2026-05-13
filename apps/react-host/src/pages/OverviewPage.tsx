@@ -116,9 +116,9 @@ export function OverviewPage({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const options = [
-    { label: 'Mac 版 (Apple Silicon)', ext: '.dmg', url: 'https://github.com/hiparker/hackathon-kanshan-bot/releases/' },
-    { label: 'Mac 版 (Intel)', ext: '.dmg', url: 'https://github.com/hiparker/hackathon-kanshan-bot/releases/' },
-    { label: 'Windows 版', ext: '.exe', url: 'https://github.com/hiparker/hackathon-kanshan-bot/releases/' },
+    { label: 'Mac 版 (Apple Silicon)', ext: '.dmg', url: 'https://github.com/hiparker/hackathon-kanshan-bot/releases/download/v1.0.10/_1.0.4_aarch64.dmg' },
+    { label: 'Mac 版 (Intel)', ext: '.dmg', url: 'https://github.com/hiparker/hackathon-kanshan-bot/releases/download/v1.0.10/_1.0.4_x64.dmg' },
+    { label: 'Windows 版', ext: '.exe', url: 'https://github.com/hiparker/hackathon-kanshan-bot/releases/download/v1.0.10/_1.0.4_x64-setup.exe' },
   ];
 
   const getSelectedUrl = () => {
