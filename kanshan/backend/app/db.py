@@ -29,7 +29,7 @@ def get_db() -> sqlite3.Connection:
             return _conn
         path = Path(settings.db_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
+        conn = sqlite3.connect(path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
@@ -65,4 +65,7 @@ def query_all(sql: str, params: tuple[Any, ...] = ()) -> list[sqlite3.Row]:
 
 def execute(sql: str, params: tuple[Any, ...] = ()) -> sqlite3.Cursor:
     with _lock:
-        return get_db().execute(sql, params)
+        conn = get_db()
+        cursor = conn.execute(sql, params)
+        conn.commit()
+        return cursor

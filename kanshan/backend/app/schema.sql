@@ -113,3 +113,41 @@ CREATE TABLE IF NOT EXISTS zhihu_hotlist_cache (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_zhihu_hotlist_time ON zhihu_hotlist_cache(created_at DESC);
+
+-- 知乎热榜条目表
+CREATE TABLE IF NOT EXISTS zhihu_hotlist_items (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  title        TEXT NOT NULL,
+  url          TEXT NOT NULL UNIQUE,
+  summary      TEXT,
+  thumbnail    TEXT,
+  hot_score    INTEGER,
+  rank         INTEGER,
+  created_at   INTEGER NOT NULL,
+  fetched_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_zhihu_items_url ON zhihu_hotlist_items(url);
+CREATE INDEX IF NOT EXISTS idx_zhihu_items_time ON zhihu_hotlist_items(fetched_at DESC);
+
+-- 热榜评论表
+CREATE TABLE IF NOT EXISTS zhihu_hotlist_comments (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  hotlist_item_id    INTEGER NOT NULL,
+  hot_comment        TEXT,  -- 热门评论
+  liukanshan_comment TEXT,  -- 刘看山评论（根据历史使用）
+  opposing_view      TEXT,  -- 对立观点
+  other_perspective  TEXT,  -- 其他层面观点
+  created_at         INTEGER NOT NULL,
+  FOREIGN KEY (hotlist_item_id) REFERENCES zhihu_hotlist_items(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_zhihu_comments_item ON zhihu_hotlist_comments(hotlist_item_id);
+
+-- 用户热榜查看历史表
+CREATE TABLE IF NOT EXISTS zhihu_user_history (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id          TEXT NOT NULL,
+  hotlist_item_id  INTEGER NOT NULL,
+  viewed_at        INTEGER NOT NULL,
+  FOREIGN KEY (hotlist_item_id) REFERENCES zhihu_hotlist_items(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_zhihu_user_history ON zhihu_user_history(user_id, viewed_at DESC);

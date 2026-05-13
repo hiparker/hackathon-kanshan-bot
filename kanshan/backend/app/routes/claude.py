@@ -172,6 +172,7 @@ async def chat(req: ClaudeChatRequest):
 
     # 3. 检测是否是技能相关问题
     enhanced_message = req.message
+    direct_reply = None  # 如果有直接回复，就不调用 sidecar
     
     # 检测热榜
     is_hot = is_hotlist_question(req.message)
@@ -179,12 +180,11 @@ async def chat(req: ClaudeChatRequest):
     print(f"📋 调试: 消息='{req.message}', 热榜={is_hot}, 天气={is_w}")
     
     if is_hot:
-        success, hotlist_data = await get_zhihu_hotlist()
+        success, hotlist_data = await get_zhihu_hotlist(req.userId)
         print(f"📋 调试: 热榜获取成功={success}, 数据长度={len(hotlist_data) if success else 0}")
         if success:
-            # 把热榜信息加入到消息中，传给 Claude 整理
-            enhanced_message = f"用户问题：{req.message}\n\n【系统提示】我已经为你获取到了最新的知乎热榜数据，请直接根据这些数据，用刘看山的风格回复用户。不要说自己没法联网！热榜数据如下：\n\n{hotlist_data}"
-            print(f"📋 调试: 增强消息长度={len(enhanced_message)}")
+            # 直接返回热榜数据，确保 URL 保留
+            direct_reply = hotlist_data
     # 检测天气
     elif is_w:
         location = extract_location(req.message)
@@ -215,8 +215,50 @@ async def chat(req: ClaudeChatRequest):
 
     client = get_client()
 
-    if not req.stream:
+    # 如果有直接回复（比如热榜），就直接返回
+    if direct_reply:
+        memory.append_message(session_id, "assistant", direct_reply)
         
+        if not req.stream:
+            # 非流式响应
+            return {
+                "sessionId": session_id,
+                "sdkSessionId": None,
+                "reply": direct_reply,
+                "usage": None,
+                "costUsd": None,
+                "durationMs": None,
+                "events": [
+                    {"kind": "status_change", "state": "running"},
+                    {"kind": "text_delta", "text": direct_reply},
+                    {"kind": "status_change", "state": "idle"}
+                ],
+                "quota": quota,
+            }
+        else:
+            # 流式响应
+            async def gen_direct():
+                # 发送状态变更
+                yield f"event: status_change\ndata: {{\"state\": \"running\"}}\n\n".encode()
+                
+                # 逐字发送文本，模拟流式输出
+                for char in direct_reply:
+                    yield f"event: text_delta\ndata: {{\"text\": {json.dumps(char)}}}\n\n".encode()
+                    import asyncio
+                    await asyncio.sleep(0.005)  # 稍微延迟，模拟打字效果
+                
+                # 完成状态
+                yield f"event: status_change\ndata: {{\"state\": \"idle\"}}\n\n".encode()
+            
+            headers = {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache, no-transform",
+                "Connection": "keep-alive",
+                "X-Quota-Remaining": str(quota.get("remaining", 0)),
+            }
+            return StreamingResponse(gen_direct(), media_type="text/event-stream", headers=headers)
+
+    if not req.stream:
         try:
             resp = await client.chat(enhanced_message, session_id=req.sessionId, options=options_dict)
         except SidecarError as e:
@@ -235,9 +277,8 @@ async def chat(req: ClaudeChatRequest):
             "quota": quota,
         }
 
-
-
     # 流式：透传 SSE，同时收集最终 assistant 文本写回 messages
+
     async def gen():
         buf_text: list[str] = []
         try:
