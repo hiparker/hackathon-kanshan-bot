@@ -64,6 +64,7 @@ class Settings:
         self.sidecar_base_url = os.getenv("SIDECAR_BASE_URL", "http://127.0.0.1:8788")
         self.sidecar_token = os.getenv("SIDECAR_TOKEN", "")
         self.db_path = os.getenv("DB_PATH", "./data/kanshan.db")
+        self.ZHIHU_SECRET = os.getenv("ZHIHU_SECRET", "")
 
     def load(self) -> dict[str, Any]:
         return self._config.copy()

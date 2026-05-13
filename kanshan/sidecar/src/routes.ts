@@ -118,7 +118,7 @@ app.post('/chat', async (c) => {
   };
   if (!body?.message) return c.json({ error: 'message required' }, 400);
   let sessionId = body.sessionId;
-  if (!sessionId) {
+  if (!sessionId || !store.getSession(sessionId)) {
     const created = store.createSession(body.options || {});
     sessionId = created.sessionId;
   }

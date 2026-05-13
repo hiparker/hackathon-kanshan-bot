@@ -20,7 +20,10 @@ from ..agent import memory
 from ..agent.rate_limit import QuotaExceeded, consume, get_quota
 from ..config import settings
 from ..db import query_all
-from ..skills import get_weather, is_weather_question, extract_location
+from ..skills import (
+    get_weather, is_weather_question, extract_location,
+    get_zhihu_hotlist, is_hotlist_question
+)
 from ..sidecar import SidecarError, get_client
 
 router = APIRouter(prefix="/claude", tags=["claude"])
@@ -155,45 +158,42 @@ async def get_session_messages(session_id: str, limit: int = 200):
 # ========== 对话 ==========
 @router.post("/chat")
 async def chat(req: ClaudeChatRequest):
-    # 1. 检测是否是天气相关问题
-    if is_weather_question(req.message):
-        location = extract_location(req.message)
-        success, weather_message = await get_weather(location)
-        
-        if success:
-            # 天气问题，直接返回
-            # 1. 限流（Claude 也走 chat 桶）
-            try:
-                quota = consume(req.userId, "chat")
-            except QuotaExceeded as e:
-                raise HTTPException(status_code=429, detail={"error": "RATE_LIMIT", "kind": e.kind, "limit": e.limit, "used": e.used})
-            
-            # 2. 会话
-            session_id = req.sessionId or f"sc_{uuid.uuid4().hex[:12]}"
-            memory.ensure_user(req.userId)
-            memory.ensure_session(session_id, req.userId, title="claude")
-            memory.append_message(session_id, "user", req.message)
-            memory.append_message(session_id, "assistant", weather_message)
-            
-            return {
-                "sessionId": session_id,
-                "reply": weather_message,
-                "quota": quota,
-            }
-    
-    # 2. 限流（Claude 也走 chat 桶）
+    # 1. 限流
     try:
         quota = consume(req.userId, "chat")
     except QuotaExceeded as e:
         raise HTTPException(status_code=429, detail={"error": "RATE_LIMIT", "kind": e.kind, "limit": e.limit, "used": e.used})
 
-    # 3. 会话
+    # 2. 会话管理
     session_id = req.sessionId or f"sc_{uuid.uuid4().hex[:12]}"
     memory.ensure_user(req.userId)
     memory.ensure_session(session_id, req.userId, title="claude")
     memory.append_message(session_id, "user", req.message)
 
-    # 3. 记忆装配（摘要 + 近期对话作为 additionalSystem 注入 sidecar）
+    # 3. 检测是否是技能相关问题
+    enhanced_message = req.message
+    
+    # 检测热榜
+    is_hot = is_hotlist_question(req.message)
+    is_w = is_weather_question(req.message)
+    print(f"📋 调试: 消息='{req.message}', 热榜={is_hot}, 天气={is_w}")
+    
+    if is_hot:
+        success, hotlist_data = await get_zhihu_hotlist()
+        print(f"📋 调试: 热榜获取成功={success}, 数据长度={len(hotlist_data) if success else 0}")
+        if success:
+            # 把热榜信息加入到消息中，传给 Claude 整理
+            enhanced_message = f"用户问题：{req.message}\n\n【系统提示】我已经为你获取到了最新的知乎热榜数据，请直接根据这些数据，用刘看山的风格回复用户。不要说自己没法联网！热榜数据如下：\n\n{hotlist_data}"
+            print(f"📋 调试: 增强消息长度={len(enhanced_message)}")
+    # 检测天气
+    elif is_w:
+        location = extract_location(req.message)
+        success, weather_data = await get_weather(location)
+        if success:
+            # 把天气信息加入到消息中，传给 Claude 整理
+            enhanced_message = f"用户问题：{req.message}\n\n【系统提示】我已经为你获取到了天气数据，请直接根据这些数据回复用户。数据如下：\n\n{weather_data}"
+
+    # 4. 记忆装配
     options_dict = _build_sidecar_options(req.userId, session_id, req.options)
     cfg = settings.load()
     short_turns = int(cfg.get("memory", {}).get("shortTermTurns", 50))
@@ -216,8 +216,9 @@ async def chat(req: ClaudeChatRequest):
     client = get_client()
 
     if not req.stream:
+        
         try:
-            resp = await client.chat(req.message, session_id=req.sessionId, options=options_dict if not req.sessionId else None)
+            resp = await client.chat(enhanced_message, session_id=req.sessionId, options=options_dict)
         except SidecarError as e:
             raise HTTPException(status_code=502, detail={"error": "SIDECAR_ERROR", "message": str(e)})
         reply = resp.get("reply") or ""
@@ -234,41 +235,16 @@ async def chat(req: ClaudeChatRequest):
             "quota": quota,
         }
 
-    # 流式：先检查是否是天气问题
-    if is_weather_question(req.message):
-        location = extract_location(req.message)
-        success, weather_message = await get_weather(location)
-        
-        if success:
-            memory.append_message(session_id, "assistant", weather_message)
-            
-            async def gen_weather():
-                # 模拟流式输出天气信息
-                import asyncio
-                chunk_size = 5
-                for i in range(0, len(weather_message), chunk_size):
-                    chunk = weather_message[i:i+chunk_size]
-                    yield f"event: text_delta\ndata: {{\"text\": \"{json.dumps(chunk)[1:-1]}\"}}\n\n".encode()
-                    await asyncio.sleep(0.05)
-                
-                yield f"event: session_complete\ndata: {{\"result\": \"{json.dumps(weather_message)[1:-1]}\", \"subtype\": \"success\"}}\n\n".encode()
-            
-            headers = {
-                "Content-Type": "text/event-stream",
-                "Cache-Control": "no-cache, no-transform",
-                "Connection": "keep-alive",
-                "X-Quota-Remaining": str(quota.get("remaining", 0)),
-            }
-            return StreamingResponse(gen_weather(), media_type="text/event-stream", headers=headers)
+
 
     # 流式：透传 SSE，同时收集最终 assistant 文本写回 messages
     async def gen():
         buf_text: list[str] = []
         try:
             async for chunk in client.stream_chat(
-                req.message,
+                enhanced_message,
                 session_id=req.sessionId,
-                options=options_dict if not req.sessionId else None,
+                options=options_dict,
             ):
                 _maybe_capture_text(chunk, buf_text)
                 yield chunk

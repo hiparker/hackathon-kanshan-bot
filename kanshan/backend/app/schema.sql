@@ -96,3 +96,20 @@ CREATE TABLE IF NOT EXISTS push_history (
   FOREIGN KEY (content_id) REFERENCES contents(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_push_history_user ON push_history(user_id, pushed_at);
+
+CREATE TABLE IF NOT EXISTS weather_cache (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  location   TEXT NOT NULL,
+  date       TEXT NOT NULL,
+  weather    TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE(location, date)
+);
+CREATE INDEX IF NOT EXISTS idx_weather_location_date ON weather_cache(location, date);
+
+CREATE TABLE IF NOT EXISTS zhihu_hotlist_cache (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  hotlist    TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_zhihu_hotlist_time ON zhihu_hotlist_cache(created_at DESC);

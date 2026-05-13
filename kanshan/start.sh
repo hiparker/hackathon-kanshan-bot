@@ -96,7 +96,7 @@ start_backend() {
     BACKEND_PID=$!
     echo "  后端 PID: $BACKEND_PID"
     echo $BACKEND_PID > "$SCRIPT_DIR/backend.pid"
-    cd "$SCRIPT_DIR"
+    # 保持在 backend 目录下
 }
 
 # 启动 sidecar
