@@ -1,0 +1,12 @@
+-- 种子数据：优质内容库（示例）
+INSERT OR IGNORE INTO contents (title, summary, url, category, tags, weight, enabled, created_at) VALUES
+('《黑客与画家》',                    '保罗·格雷厄姆谈创业、编程与设计的经典文集，影响了一代极客。',            'https://book.douban.com/subject/6021440/',          'tech',       'book,essay',         5, 1, CAST(strftime('%s','now') AS INTEGER)*1000),
+('The Pragmatic Programmer',         '程序员修炼之道：从小工到专家，20 条影响深远的实用工程智慧。',          'https://pragprog.com/titles/tpp20/',                'tech',       'book,engineering',   5, 1, CAST(strftime('%s','now') AS INTEGER)*1000),
+('MDN Web Docs',                     '最权威的 Web 标准参考文档，查 API 比 Google 快。',                    'https://developer.mozilla.org/',                    'tech',       'reference,web',      4, 1, CAST(strftime('%s','now') AS INTEGER)*1000),
+('Paul Graham: How to Do Great Work','关于「如何做出伟大工作」的思考与建议。',                              'https://paulgraham.com/greatwork.html',             'knowledge',  'essay,career',       5, 1, CAST(strftime('%s','now') AS INTEGER)*1000),
+('Anthropic Research',               'Claude 背后的 AI 安全与能力研究。',                                   'https://www.anthropic.com/research',                'tech',       'ai,research',        4, 1, CAST(strftime('%s','now') AS INTEGER)*1000),
+('arXiv cs.AI 最新',                 '人工智能最前沿论文预印本每日更新。',                                  'https://arxiv.org/list/cs.AI/recent',               'tech',       'ai,paper',           3, 1, CAST(strftime('%s','now') AS INTEGER)*1000),
+('You and Your Research',            'Richard Hamming 关于「如何做第一流研究」的经典演讲。',                 'https://www.cs.virginia.edu/~robins/YouAndYourResearch.html', 'knowledge', 'career,science', 4, 1, CAST(strftime('%s','now') AS INTEGER)*1000),
+('久坐危害与对抗',                   '每坐 30 分钟起身 2 分钟，显著降低心血管风险。',                        'https://www.health.harvard.edu/blog/the-dangers-of-sitting-201501157931', 'life', 'health,sitting', 3, 1, CAST(strftime('%s','now') AS INTEGER)*1000),
+('20-20-20 护眼法则',                '每看屏幕 20 分钟，看 20 英尺外事物 20 秒，缓解数字眼疲劳。',           'https://www.aao.org/eye-health/tips-prevention/computer-usage', 'life', 'health,eyes',    3, 1, CAST(strftime('%s','now') AS INTEGER)*1000),
+('MyAgents 开源项目',                '活在你电脑里的本地 AI Agent，Claude Code 二合一 IM Bot。',             'https://myagents.io',                                'tech',       'ai,desktop',         4, 1, CAST(strftime('%s','now') AS INTEGER)*1000);

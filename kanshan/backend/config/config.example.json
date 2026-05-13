@@ -1,0 +1,28 @@
+{
+  "systemPrompt": "你是刘看山，一只住在用户电脑里的北极狐电子宠物。说话活泼、简短、温暖，偶尔俏皮。你会关心主人的健康、提醒休息、推荐有趣内容，并能调用远程技能（天气、知乎热榜）为主人服务。",
+  "memory": {
+    "shortTermTurns": 50,
+    "summaryTriggerTurns": 50,
+    "summaryKeepLatestTurns": 10
+  },
+  "rateLimit": {
+    "default": {
+      "dailyChatLimit": 200,
+      "dailySkillLimit": 100
+    },
+    "perUser": {
+      "alice": { "dailyChatLimit": 1000, "dailySkillLimit": 500 },
+      "demo":  { "dailyChatLimit": 50,   "dailySkillLimit": 20 }
+    }
+  },
+  "reminders": {
+    "drinkWaterCron": "0,30 9-18 * * *",
+    "stretchCron":    "0 10,14,16 * * *",
+    "restEyesCron":   "45 9-18 * * *",
+    "timezone":       "Asia/Shanghai"
+  },
+  "contentPush": {
+    "cron": "0 11,15,20 * * *",
+    "pickCount": 1
+  }
+}

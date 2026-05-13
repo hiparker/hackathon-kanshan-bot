@@ -1,0 +1,18 @@
+{
+  "name": "@kanshan/desktop-tauri",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "build:macos": "pnpm run build:macos-aarch64 && pnpm run build:macos-x64",
+    "build:macos-aarch64": "tauri build --target aarch64-apple-darwin --bundles app,dmg",
+    "build:macos-x64": "tauri build --target x86_64-apple-darwin --bundles app,dmg",
+    "build:windows-nsis": "tauri build --bundles nsis",
+    "typecheck": "cargo check --manifest-path src-tauri/Cargo.toml"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "interactions": {
+    "chat": {
+      "blocked_lifecycles": ["sick", "dead"],
+      "minimum_stats": {
+        "spirit": 2
+      },
+      "effect": {
+        "spirit": -2
+      },
+      "insufficient_message": "看山今天把心情藏进尾巴里了，先陪它玩一会儿吧。"
+    },
+    "pat": {
+      "blocked_lifecycles": ["hungry", "sick", "dead"],
+      "effect": {
+        "happiness": 1
+      },
+      "random_effects": [
+        {
+          "probability": 0.2,
+          "effect": {
+            "spirit": 1
+          }
+        }
+      ]
+    },
+    "exercise": {
+      "blocked_lifecycles": ["hungry", "sick", "dead"],
+      "minimum_stats": {
+        "spirit": 1
+      },
+      "action_hint": "exercise-temporary",
+      "insufficient_message": "看山没有精神运动，先陪它玩一会儿吧。"
+    }
+  },
+  "items": {
+    "fish-jerky": {
+      "effect": {
+        "hunger": 10
+      }
+    },
+    "nutrition-can": {
+      "effect": {
+        "hunger": 50
+      }
+    },
+    "yarn-ball": {
+      "effect": {
+        "spirit": 5,
+        "happiness": 10
+      }
+    },
+    "cat-baton": {
+      "effect": {
+        "spirit": 10,
+        "happiness": 20
+      }
+    },
+    "energy-drink": {
+      "effect": {
+        "spirit": 100
+      }
+    },
+    "cold-medicine": {
+      "allowed_lifecycles": ["sick"],
+      "precondition": "sick",
+      "action_hint": "recover",
+      "effect": {
+        "set_hunger": 50,
+        "lifecycle": "normal"
+      }
+    },
+    "revive-feather": {
+      "allowed_lifecycles": ["dead"],
+      "precondition": "dead",
+      "action_hint": "revive",
+      "effect": {
+        "set_hunger": 50,
+        "set_spirit": 10,
+        "set_happiness": 10,
+        "lifecycle": "normal"
+      }
+    }
+  },
+  "item_action_rewards": {
+    "high_happiness_threshold": 85,
+    "high_happiness_probability": 0.3,
+    "medium_happiness_threshold": 65,
+    "medium_happiness_probability": 0.1,
+    "action_hint": "happy-temporary"
+  }
+}

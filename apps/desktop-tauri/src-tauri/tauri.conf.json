@@ -1,0 +1,70 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "刘看山",
+  "version": "1.0.4",
+  "identifier": "com.zhihu.kanshan.bot",
+  "build": {
+    "beforeDevCommand": "pnpm --filter @kanshan/react-host dev:desktop",
+    "beforeBuildCommand": "pnpm --filter @kanshan/react-host build:desktop",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../../react-host/dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "刘看山",
+        "width": 540,
+        "height": 430,
+        "minWidth": 540,
+        "minHeight": 430,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "center": true,
+        "shadow": false,
+        "visible": true,
+        "focus": true,
+        "acceptFirstMouse": true,
+        "backgroundColor": "#00000000"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "icon": [
+      "icons/icon.icns",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "category": "Utility",
+    "macOS": {
+      "bundleName": "刘看山"
+    },
+    "windows": {
+      "nsis": {
+        "startMenuFolder": "Liu Kanshan"
+      }
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "mobile": [],
+      "desktop": {
+        "schemes": [
+          "kanshan"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,44 @@
+node_modules/
+**/dist/
+
+# 通过 scripts/fetch-model-assets.mjs 从 CDN 拉取，不进 git
+assets/model/*.glb
+assets/model/*.gltf
+assets/model/*.glb.downloading
+
+.DS_Store
+Thumbs.db
+
+.env
+.env.*
+!.env.example
+kanshan/backend/config/config.json
+.tool-versions
+
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+coverage/
+.claude/
+.vite/
+.turbo/
+.cache/
+.tmp/
+.pnpm-store/
+
+# Tauri generated files
+apps/*/src-tauri/target/
+apps/*/src-tauri/gen/
+
+# Go backend (services/kanshan-server)
+services/**/bin/
+services/**/*.db
+services/**/*.db-journal
+services/**/*.db-shm
+services/**/*.db-wal
+.idea/
+.cursor/
+kanshan.db
+kanshan.db-shm
+kanshan.db-wal

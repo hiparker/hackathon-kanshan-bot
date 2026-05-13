@@ -1,0 +1,223 @@
+// Package service defines the business-assurance + data-secondary-processing
+// contracts that sit between portal handlers and the dao layer. It lives
+// under pkg/core because the kanshan-server family treats the service layer
+// as the cross-cutting "core" of the program: portal calls into it, and it
+// is the only layer allowed to compose dao + business packages.
+//
+// This package depends only on pkg/basic/dao (for model shapes) and never
+// on database/sql.
+package service
+
+import "context"
+
+// ===== Errors =====
+
+// Error is a typed sentinel error returned by services so portal handlers
+// can map it to a stable HTTP code without depending on dao internals.
+type Error string
+
+func (e Error) Error() string { return string(e) }
+
+const (
+	ErrUnauthorized              Error = "UNAUTHORIZED"
+	ErrBadRequest                Error = "BAD_REQUEST"
+	ErrInventoryInsufficient     Error = "INVENTORY_INSUFFICIENT"
+	ErrInventoryPreconditionFail Error = "INVENTORY_PRECONDITION_FAILED"
+	ErrInventoryCooldown         Error = "INVENTORY_COOLDOWN"
+	ErrPetActionNotAllowed       Error = "PET_ACTION_NOT_ALLOWED"
+	ErrTaskNotFound              Error = "TASK_NOT_FOUND"
+	ErrInternal                  Error = "INTERNAL"
+)
+
+// ===== Auth =====
+
+// AuthSession is the result of a successful sign-in.
+type AuthSession struct {
+	UserID       string
+	ZhihuUserID  string
+	Name         string
+	SessionToken string
+	ExpiresAt    int64
+}
+
+// AuthUser is the identity shown to the client after session validation.
+type AuthUser struct {
+	UserID      string
+	ZhihuUserID string
+	Name        string
+}
+
+// AuthService handles login + session minting.
+type AuthService interface {
+	SignIn(ctx context.Context, code string) (AuthSession, error)
+	CurrentUser(ctx context.Context, userID string) (AuthUser, error)
+}
+
+// ===== Inventory =====
+
+// InventoryItem is the user-facing item shape after secondary processing.
+type InventoryItem struct {
+	ItemID               string
+	Name                 string
+	Qty                  int
+	Rarity               string
+	CooldownRemainingSec int
+	ExpireAt             *int64
+	ActionHint           string
+	Precondition         *string
+}
+
+// UseResult is what InventoryService.Use returns.
+type UseResult struct {
+	NewState   PetSnapshot
+	ActionHint string
+	Message    string
+}
+
+// InventoryService validates use-conditions, decrements qty, applies effects.
+type InventoryService interface {
+	List(ctx context.Context, userID string) ([]InventoryItem, error)
+	Use(ctx context.Context, userID, itemID string) (UseResult, error)
+	// Deduct removes qty without pet precondition checks (crafting, shop, batch consume).
+	// reason is stored in inventory_log (empty defaults to "deduct").
+	Deduct(ctx context.Context, userID, itemID string, qty int, reason string) (InventoryItem, error)
+	// Restock adds qty (task rewards, purchase). Empty reason defaults to "restock".
+	Restock(ctx context.Context, userID, itemID string, qty int, reason string) (InventoryItem, error)
+}
+
+// ===== Pet state =====
+
+// PetSnapshot is the user-facing pet state shape.
+type PetSnapshot struct {
+	UserID     string
+	Hunger     int
+	Happiness  int
+	Energy     int
+	Spirit     int
+	Health     int
+	Growth     int
+	Mood       string
+	Lifecycle  string
+	LastTickAt int64
+	ActionHint string
+	Message    string
+}
+
+type PetInteractionResult struct {
+	NewState   PetSnapshot
+	ActionHint string
+	Message    string
+}
+
+type PetDebugStateInput struct {
+	Hunger      *int
+	Happiness   *int
+	Spirit      *int
+	Health      *int
+	Lifecycle   string
+	SickDaysAgo *int
+}
+
+// PetStateService owns pet state read/tick semantics.
+type PetStateService interface {
+	Get(ctx context.Context, userID string) (PetSnapshot, error)
+	Tick(ctx context.Context, userID string) (PetSnapshot, error)
+	Interact(ctx context.Context, userID, action string) (PetInteractionResult, error)
+	DebugSetState(ctx context.Context, userID string, input PetDebugStateInput) (PetSnapshot, error)
+	// CompleteItemUse applies decay, validates precondition, runs decrement (typically
+	// inventory deduct), merges effect_json into pet, and saves. decrement is skipped
+	// if precondition fails after decay.
+	CompleteItemUse(ctx context.Context, userID string, precondition *string, effectJSON string, decrement func() error) (PetSnapshot, error)
+}
+
+// ===== Tasks =====
+
+// Reward describes a single reward instance.
+type Reward struct {
+	Kind   string
+	ItemID string
+	Qty    int
+}
+
+// TaskView is the user-facing task shape.
+type TaskView struct {
+	TaskID       string
+	Type         string
+	Name         string
+	TargetCount  int
+	DoneCount    int
+	Rewards      []Reward
+	TriggerEvent string
+}
+
+// ProgressResult is what TaskService.Progress returns.
+type ProgressResult struct {
+	Task           TaskView
+	RewardsGranted []Reward
+}
+
+// TaskService owns task listing and progress accounting.
+type TaskService interface {
+	List(ctx context.Context, userID, period string) ([]TaskView, error)
+	Progress(ctx context.Context, userID, taskID string, delta int) (ProgressResult, error)
+}
+
+// ===== Stats =====
+
+// StatsEventInput is the user-facing event shape.
+type StatsEventInput struct {
+	Type    string
+	Payload map[string]any
+	TS      int64
+}
+
+// StatsService owns event ingestion and (in P1) implicit task progression.
+type StatsService interface {
+	Event(ctx context.Context, userID string, e StatsEventInput) error
+}
+
+// ===== Market stream =====
+
+// MarketWeather is the current weather snapshot included in the websocket feed.
+type MarketWeather struct {
+	City       string `json:"city"`
+	Condition  string `json:"condition"`
+	TempC      int    `json:"temp_c"`
+	FeelsLikeC int    `json:"feels_like_c"`
+	Humidity   int    `json:"humidity"`
+}
+
+// MarketQuote is a single market data point included in the websocket feed.
+type MarketQuote struct {
+	Key           string   `json:"key"`
+	Label         string   `json:"label"`
+	Price         float64  `json:"price"`
+	Unit          string   `json:"unit,omitempty"`
+	Change        *float64 `json:"change,omitempty"`
+	ChangePercent *float64 `json:"change_percent,omitempty"`
+}
+
+// MarketNews is a single news item included in the websocket feed.
+type MarketNews struct {
+	Source      string `json:"source"`
+	Category    string `json:"category"`
+	Title       string `json:"title"`
+	Summary     string `json:"summary,omitempty"`
+	URL         string `json:"url,omitempty"`
+	PublishedAt string `json:"published_at,omitempty"`
+}
+
+// MarketSnapshot is the periodic payload pushed over websocket.
+type MarketSnapshot struct {
+	GeneratedAt int64          `json:"generated_at"`
+	Summary     string         `json:"summary"`
+	Weather     *MarketWeather `json:"weather,omitempty"`
+	Quotes      []MarketQuote  `json:"quotes"`
+	News        []MarketNews   `json:"news,omitempty"`
+	Warnings    []string       `json:"warnings,omitempty"`
+}
+
+// MarketService fetches the current weather and market snapshot for websocket clients.
+type MarketService interface {
+	Snapshot(ctx context.Context) (MarketSnapshot, error)
+}

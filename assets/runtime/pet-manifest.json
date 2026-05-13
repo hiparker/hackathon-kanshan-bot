@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "actions": [
+    "idle",
+    "walk",
+    "run",
+    "blink",
+    "happy",
+    "dragging",
+    "hungry",
+    "sleepy",
+    "sick",
+    "dead",
+    "revive",
+    "death-notice"
+  ],
+  "moods": [
+    "normal",
+    "happy",
+    "hungry",
+    "sleepy",
+    "sick"
+  ],
+  "slots": [
+    "head",
+    "mouth",
+    "hand-left",
+    "hand-right",
+    "tail",
+    "feet",
+    "emotion"
+  ],
+  "props": [
+    {
+      "id": "holiday-hat",
+      "slot": "head",
+      "description": "节日帽子道具占位。"
+    },
+    {
+      "id": "baton",
+      "slot": "hand-right",
+      "description": "手杖或指挥棒道具占位。"
+    },
+    {
+      "id": "skateboard",
+      "slot": "feet",
+      "description": "滑板道具占位。"
+    }
+  ],
+  "effects": [
+    {
+      "id": "heart",
+      "slot": "emotion",
+      "description": "开心或比心爱心特效。"
+    },
+    {
+      "id": "sweat",
+      "slot": "emotion",
+      "description": "紧张、疲惫或生病汗滴特效。"
+    },
+    {
+      "id": "music-note",
+      "slot": "emotion",
+      "description": "音乐和摇摆状态音符特效。"
+    }
+  ],
+  "assets": {
+    "runtime": "@kanshan/three-runtime",
+    "modelStrategy": "procedural-low-poly-first, replaceable-glb-later",
+    "futureGlbPath": "assets/model/exports/kanshan-fox.glb"
+  }
+}

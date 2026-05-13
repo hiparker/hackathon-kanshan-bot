@@ -1,0 +1,19 @@
+[project]
+name = "kanshan-server"
+version = "0.1.0"
+description = "刘看山（Kanshan）桌面电子宠物 - Python 后端"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "httpx>=0.27.0",
+    "apscheduler>=3.10.4",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "python-dotenv>=1.0.1",
+    "sse-starlette>=2.1.3",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

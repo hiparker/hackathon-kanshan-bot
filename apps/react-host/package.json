@@ -1,0 +1,38 @@
+{
+  "name": "@kanshan/react-host",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "dev:vite": "vite --host 0.0.0.0",
+    "dev:desktop": "vite --host 127.0.0.1 --port 1420 --strictPort --mode desktop",
+    "build": "node ../../scripts/build-react-host.mjs",
+    "build:vite": "node ../../scripts/build-react-host.mjs",
+    "build:desktop": "node ../../scripts/build-react-host.mjs --mode desktop",
+    "preview": "vite preview --host 0.0.0.0",
+    "preview:vite": "vite preview --host 0.0.0.0",
+    "start:static": "pnpm run start:static:vite",
+    "start:static:vite": "pnpm run build:vite && pnpm run preview:vite",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kanshan/bridge": "workspace:*",
+    "@kanshan/three-runtime": "workspace:*",
+    "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/plugin-deep-link": "^2.0.0",
+    "@types/three": "^0.184.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0",
+    "three": "^0.184.0",
+    "typescript": "^5.7.2",
+    "unicornstudio-react": "^2.1.9",
+    "vite": "^5.4.11"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1"
+  }
+}
