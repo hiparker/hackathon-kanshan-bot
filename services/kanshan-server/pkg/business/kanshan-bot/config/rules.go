@@ -12,9 +12,11 @@ import (
 var defaultRulesJSON []byte
 
 type Rules struct {
-	Interactions      map[string]InteractionRule `json:"interactions"`
-	Items             map[string]ItemRule        `json:"items"`
-	ItemActionRewards ItemActionRewardRule       `json:"item_action_rewards"`
+	Interactions      map[string]InteractionRule  `json:"interactions"`
+	Items             map[string]ItemRule         `json:"items"`
+	TaskRewards       map[string][]TaskRewardRule `json:"task_rewards"`
+	TaskEffects       map[string]TaskEffectRule   `json:"task_effects"`
+	ItemActionRewards ItemActionRewardRule        `json:"item_action_rewards"`
 }
 
 type InteractionRule struct {
@@ -36,6 +38,17 @@ type ItemRule struct {
 	Precondition      *string        `json:"precondition"`
 	ActionHint        string         `json:"action_hint"`
 	Effect            map[string]any `json:"effect"`
+}
+
+type TaskRewardRule struct {
+	ItemID      string  `json:"item_id"`
+	Qty         int     `json:"qty"`
+	Probability float64 `json:"probability"`
+}
+
+type TaskEffectRule struct {
+	ActionHint string         `json:"action_hint"`
+	Effect     map[string]any `json:"effect"`
 }
 
 type ItemActionRewardRule struct {

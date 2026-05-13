@@ -25,31 +25,31 @@ type User struct {
 // Item mirrors items_catalog joined with the per-user user_items row.
 // When a user has no row in user_items the impl returns Qty == 0.
 type Item struct {
-	ItemID               string
-	Name                 string
-	Rarity               string
-	CooldownSec          int
-	EffectJSON           string
-	Precondition         *string
-	ActionHint           string
-	Qty                  int
-	LastUsedAt           *int64
-	ExpireAt             *int64
+	ItemID       string
+	Name         string
+	Rarity       string
+	CooldownSec  int
+	EffectJSON   string
+	Precondition *string
+	ActionHint   string
+	Qty          int
+	LastUsedAt   *int64
+	ExpireAt     *int64
 }
 
 // PetState mirrors the pet_state table.
 type PetState struct {
-	UserID             string
-	Hunger             int
-	Happiness          int
-	Energy             int
-	Health             int
-	Growth             int
-	Mood               string
-	Lifecycle          string
-	LastTickAt         int64
-	SickStartedAt      *int64
-	RunawayStartedAt   *int64
+	UserID           string
+	Hunger           int
+	Happiness        int
+	Energy           int
+	Health           int
+	Growth           int
+	Mood             string
+	Lifecycle        string
+	LastTickAt       int64
+	SickStartedAt    *int64
+	RunawayStartedAt *int64
 }
 
 // Task mirrors tasks_catalog joined with the per-user user_tasks row.
@@ -129,6 +129,12 @@ type TaskDao interface {
 	GetForUser(ctx context.Context, userID, taskID, periodKey string) (Task, error)
 	// UpsertProgress writes the current progress and rewarded flag.
 	UpsertProgress(ctx context.Context, userID, taskID, periodKey string, doneCount int, rewarded bool, doneAt *int64) error
+}
+
+// InteractionCountDao stores per-period interaction counters such as daily pat limits.
+type InteractionCountDao interface {
+	GetCount(ctx context.Context, userID, action, periodKey string) (int, error)
+	Increment(ctx context.Context, userID, action, periodKey string) (int, error)
 }
 
 // StatsDao persists raw events for later aggregation.

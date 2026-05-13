@@ -13,13 +13,16 @@ import {
   consumeKanshanAuthRedirect,
   consumeKanshanDesktopAuthURL,
   fetchKanshanDefaultState,
+  fetchKanshanPetSnapshot,
   fetchKanshanProps,
   fetchKanshanTasks,
   fetchCurrentKanshanUser,
   getStoredKanshanUser,
   isKanshanOAuthMode,
   petSnapshotToDefaultState,
+  petSnapshotToStats,
   progressKanshanTask,
+  interactKanshan,
   signOutKanshan,
   startZhihuLogin,
   storeKanshanSession,
@@ -27,10 +30,11 @@ import {
   type KanshanDefaultState,
   type KanshanCurrentUser,
   type KanshanPropItem,
+  type KanshanPetStats,
   type KanshanTaskItem,
 } from './kanshanMenuData';
 import { kanshanModelConfig } from './kanshanModelConfig';
-import { KanshanModelPreview, type KanshanModelPreviewHandle, type KanshanRewardToast } from './KanshanModelPreview';
+import { KanshanModelPreview, openExternalUrl, type KanshanModelPreviewHandle, type KanshanRewardToast } from './KanshanModelPreview';
 import { OverviewPage } from './pages/OverviewPage';
 import {
   chooseKanshanMarketReactionAction,
@@ -81,6 +85,7 @@ export function App() {
   const [clipNames, setClipNames] = useState<string[]>([]);
   const [propItems, setPropItems] = useState<KanshanPropItem[]>([]);
   const [taskItems, setTaskItems] = useState<KanshanTaskItem[]>([]);
+  const [petStats, setPetStats] = useState<KanshanPetStats | null>(null);
   const [menuDataStatus, setMenuDataStatus] = useState<MenuDataStatus>('idle');
   const [authStatus, setAuthStatus] = useState<AuthStatus>(() => (SHOULD_REQUIRE_AUTH ? 'checking' : 'authenticated'));
   const [currentUser, setCurrentUser] = useState<KanshanCurrentUser | null>(() => getStoredKanshanUser());
@@ -295,6 +300,17 @@ export function App() {
     marketDialogueTimerRef.current = null;
   }, []);
 
+  const clearMarketDialogue = useCallback(() => {
+    clearMarketDialogueTimer();
+    setMarketDialogueText('');
+    setMarketDialogueUrl(undefined);
+  }, [clearMarketDialogueTimer]);
+
+  useEffect(() => {
+    if (authStatus === 'authenticated') return;
+    clearMarketDialogue();
+  }, [authStatus, clearMarketDialogue]);
+
   const flushChatDisplay = useCallback(() => {
     clearChatDisplayTimer();
 
@@ -349,6 +365,12 @@ export function App() {
     if (nextDefaultState.action === 'idle') setIsDead(false);
   }, []);
 
+  const refreshPetStats = useCallback(async () => {
+    const snapshot = await fetchKanshanPetSnapshot();
+    setPetStats(petSnapshotToStats(snapshot));
+    return snapshot;
+  }, []);
+
   const fetchAndStoreDefaultState = useCallback(async () => {
     const nextDefaultState = await fetchKanshanDefaultState();
     setDefaultAction(nextDefaultState.action);
@@ -359,8 +381,9 @@ export function App() {
   const fetchAndApplyDefaultState = useCallback(async () => {
     const nextDefaultState = await fetchKanshanDefaultState();
     applyDefaultState(nextDefaultState);
+    void refreshPetStats().catch(() => {});
     return nextDefaultState;
-  }, [applyDefaultState]);
+  }, [applyDefaultState, refreshPetStats]);
 
   const scheduleDefaultStatePoll = useCallback(() => {
     clearDefaultStateTimer();
@@ -382,13 +405,14 @@ export function App() {
     let isCurrent = true;
 
     setMenuDataStatus('loading');
-    Promise.allSettled([fetchKanshanProps(), fetchKanshanTasks(), fetchKanshanDefaultState()])
-      .then(([propsResult, tasksResult, defaultStateResult]) => {
+    Promise.allSettled([fetchKanshanProps(), fetchKanshanTasks(), fetchKanshanDefaultState(), fetchKanshanPetSnapshot()])
+      .then(([propsResult, tasksResult, defaultStateResult, petStateResult]) => {
         if (!isCurrent) return;
 
         if (propsResult.status === 'fulfilled') setPropItems(propsResult.value);
         if (tasksResult.status === 'fulfilled') setTaskItems(tasksResult.value);
         if (defaultStateResult.status === 'fulfilled') applyDefaultState(defaultStateResult.value);
+        if (petStateResult.status === 'fulfilled') setPetStats(petSnapshotToStats(petStateResult.value));
 
         setMenuDataStatus(propsResult.status === 'fulfilled' || tasksResult.status === 'fulfilled' ? 'ready' : 'error');
       });
@@ -409,10 +433,10 @@ export function App() {
       chatAbortControllerRef.current?.abort();
       clearChatDisplayTimer();
       clearDefaultStateTimer();
-      clearMarketDialogueTimer();
+      if (authStatus !== 'authenticated') clearMarketDialogue();
       clearTemporaryFallbackTimer();
     };
-  }, [authStatus, clearChatDisplayTimer, clearDefaultStateTimer, clearMarketDialogueTimer, clearTemporaryFallbackTimer, scheduleDefaultStatePoll]);
+  }, [authStatus, clearChatDisplayTimer, clearDefaultStateTimer, clearMarketDialogue, clearTemporaryFallbackTimer, scheduleDefaultStatePoll]);
 
   const playAction = useCallback((action: PetAction) => {
     const meta = kanshanActionMeta[action];
@@ -436,8 +460,10 @@ export function App() {
   useEffect(() => {
     if (authStatus !== 'authenticated') return;
 
+    let isCurrent = true;
     const stop = connectKanshanMarketStream({
       onSnapshot(snapshot) {
+        if (!isCurrent) return;
         const candidate = pickKanshanMarketDialogueCandidate(snapshot);
         const nextText = candidate ? `看山播报：${candidate.text}` : snapshot.summary.trim() ? `看山播报：${snapshot.summary.trim()}` : '';
         if (!nextText) return;
@@ -449,7 +475,10 @@ export function App() {
         playAction(chooseKanshanMarketReactionAction(snapshot));
       },
     });
-    return stop;
+    return () => {
+      isCurrent = false;
+      stop();
+    };
   }, [applyMarketDialogue, authStatus, playAction]);
 
   const finishTemporaryAction = useCallback(() => {
@@ -471,7 +500,7 @@ export function App() {
     clearTemporaryFallbackTimer();
     temporaryActionRef.current = null;
     fetchAndApplyDefaultState().finally(scheduleDefaultStatePoll);
-  }, [clearTemporaryFallbackTimer, fetchAndApplyDefaultState, scheduleDefaultStatePoll]);
+  }, [clearTemporaryFallbackTimer, fetchAndApplyDefaultState, refreshPetStats, scheduleDefaultStatePoll]);
 
   const playDefaultAction = useCallback(() => {
     finishTemporaryAction();
@@ -481,7 +510,13 @@ export function App() {
     isFollowingDefaultRef.current = false;
     clearTemporaryFallbackTimer();
     temporaryActionRef.current = { token: Date.now(), minEndAt: Date.now() + TEMPORARY_ACTION_MIN_MS };
+    return true;
   }, [clearTemporaryFallbackTimer]);
+
+  const handlePatStart = useCallback(() => {
+    handleTemporaryActionStart();
+    void interactKanshan('pat').catch(() => setMenuDataStatus('error'));
+  }, [handleTemporaryActionStart]);
 
   const playRawClip = useCallback((clipName: string) => {
     isFollowingDefaultRef.current = false;
@@ -502,6 +537,16 @@ export function App() {
     window.setTimeout(() => setRewardToast(reward), 0);
   }, []);
 
+  const refreshTasksAndPropsAfterProgress = useCallback(async (rewardsGranted: Array<{ kind: string; itemId?: string; qty?: number }>) => {
+    const [nextTaskItems, nextPropItems] = await Promise.all([
+      fetchKanshanTasks(),
+      rewardsGranted.length > 0 ? fetchKanshanProps() : Promise.resolve(propItems),
+    ]);
+    setTaskItems(nextTaskItems);
+    setPropItems(nextPropItems);
+    setMenuDataStatus('ready');
+  }, [propItems]);
+
   const handleSelectProp = useCallback((item: KanshanPropItem) => {
     if (item.count <= 0) return;
     showRewardToast({ label: item.name, icon: { propId: item.id } });
@@ -516,27 +561,37 @@ export function App() {
           await fetchAndApplyDefaultState();
         }
 
-        const nextPropItems = await fetchKanshanProps();
+        const shouldProgressFeedTask = item.id === 'fish-jerky' || item.id === 'nutrition-can';
+        if (shouldProgressFeedTask) {
+          await progressKanshanTask('feed-2-times');
+        }
+        const [nextPropItems, nextTaskItems] = await Promise.all([
+          fetchKanshanProps(),
+          shouldProgressFeedTask ? fetchKanshanTasks() : Promise.resolve(taskItems),
+        ]);
         setPropItems(nextPropItems);
+        if (shouldProgressFeedTask) setTaskItems(nextTaskItems);
+        await refreshPetStats().catch(() => {});
         setMenuDataStatus('ready');
       })
       .catch(() => setMenuDataStatus('error'));
-  }, [applyDefaultState, fetchAndApplyDefaultState, playAction, showRewardToast]);
+  }, [applyDefaultState, fetchAndApplyDefaultState, playAction, refreshPetStats, showRewardToast, taskItems]);
 
   const handleSelectTask = useCallback((item: KanshanTaskItem) => {
-    showRewardToast({ label: item.taskName, icon: 'task' });
+    if (item.action === 'disabled' || item.availableCount >= item.totalCount) return;
     void progressKanshanTask(item.id)
-      .then(async ({ rewardsGranted }) => {
-        const [nextTaskItems, nextPropItems] = await Promise.all([
-          fetchKanshanTasks(),
-          rewardsGranted.length > 0 ? fetchKanshanProps() : Promise.resolve(propItems),
-        ]);
-        setTaskItems(nextTaskItems);
-        setPropItems(nextPropItems);
-        setMenuDataStatus('ready');
+      .then(async ({ rewardsGranted, actionHint, newState }) => {
+        if (newState) applyDefaultState(petSnapshotToDefaultState(newState));
+        const hintedAction = resolveActionHint(actionHint);
+        if (hintedAction) playAction(hintedAction);
+        await refreshTasksAndPropsAfterProgress(rewardsGranted);
+        await refreshPetStats().catch(() => {});
+        if (item.action === 'open-url' && item.url) {
+          await openExternalUrl(item.url);
+        }
       })
       .catch(() => setMenuDataStatus('error'));
-  }, [propItems, showRewardToast]);
+  }, [applyDefaultState, playAction, refreshPetStats, refreshTasksAndPropsAfterProgress]);
 
   const submitChat = useCallback(async () => {
     const message = chatInput.trim();
@@ -576,6 +631,13 @@ export function App() {
       };
 
       await streamChat(message, streamHandlers, { signal: abortController.signal });
+      try {
+        const { rewardsGranted } = await progressKanshanTask('chat-1-time');
+        await refreshTasksAndPropsAfterProgress(rewardsGranted);
+        await refreshPetStats().catch(() => {});
+      } catch {
+        setMenuDataStatus('error');
+      }
       setChatInput('');
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return;
@@ -600,7 +662,7 @@ export function App() {
 
       waitForTypingToFinish();
     }
-  }, [chatInput, isSending]);
+  }, [chatInput, isSending, refreshPetStats, refreshTasksAndPropsAfterProgress]);
 
   const handleChatInputKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== 'Enter' || event.shiftKey) return;
@@ -609,8 +671,8 @@ export function App() {
   }, [submitChat]);
 
   const shellClass = IS_DESKTOP_MODE ? 'glb-shell glb-shell--desktop' : 'glb-shell';
-  const resolvedDialogueText = dialogueSource === 'market' ? marketDialogueText : chatText;
-  const resolvedIsDialogueStreaming = dialogueSource === 'chat' && isSending;
+  const resolvedDialogueText = authStatus === 'authenticated' ? (dialogueSource === 'market' ? marketDialogueText : chatText) : '';
+  const resolvedIsDialogueStreaming = authStatus === 'authenticated' && dialogueSource === 'chat' && isSending;
 
   const kanshanModelPreview = (
     <KanshanModelPreview
@@ -618,7 +680,7 @@ export function App() {
       chatError={chatError}
       chatInput={chatInput}
       desktopMode={IS_DESKTOP_MODE}
-      dialogueLinkUrl={dialogueSource === 'market' ? marketDialogueUrl : undefined}
+      dialogueLinkUrl={authStatus === 'authenticated' && dialogueSource === 'market' ? marketDialogueUrl : undefined}
       dialogueSource={dialogueSource}
       dialogueText={resolvedDialogueText}
       isDialogueStreaming={resolvedIsDialogueStreaming}
@@ -631,10 +693,11 @@ export function App() {
       modelUrl={kanshanModelConfig.url}
       needsLogin={authStatus !== 'authenticated'}
       ownerName={currentUser?.name}
+      petStats={petStats}
       propItems={propItems}
       taskItems={taskItems}
       onActionEnd={handleActionEnd}
-      onPatStart={handleTemporaryActionStart}
+      onPatStart={handlePatStart}
       onPatEnd={playDefaultAction}
       onClipNamesChange={setClipNames}
       onLogin={handleLogin}

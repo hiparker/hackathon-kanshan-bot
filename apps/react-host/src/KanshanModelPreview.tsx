@@ -8,7 +8,7 @@ import {
   resolveKanshanClipDialogue,
   resolveKanshanClipName,
 } from './kanshanActionConfig';
-import type { KanshanPropItem, KanshanTaskItem } from './kanshanMenuData';
+import type { KanshanPetStats, KanshanPropItem, KanshanTaskItem } from './kanshanMenuData';
 
 export interface KanshanModelPreviewHandle {
   playRawClip(clipName: string): void;
@@ -43,9 +43,10 @@ const STAGE_SIZE = 300;
 const DESKTOP_WINDOW_DRAG_MARGIN_FRAC = 0.25;
 const INTERACTION_GRACE_MS = 420;
 const ZHIDA_AI_URL = 'https://zhida.ai/';
+const KANSHAN_LIKE_URL = 'https://www.zhihu.com/hackathon/project/23';
 const CHAT_DIALOGUE_EMPTY_TEXT = '和我说点什么吧，我会在这里回应你。';
 
-async function openExternalUrl(url: string) {
+export async function openExternalUrl(url: string) {
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('kanshan_open_external_url', { url });
@@ -305,6 +306,7 @@ interface KanshanModelPreviewProps {
   modelUrl: string;
   needsLogin?: boolean;
   ownerName?: string;
+  petStats?: KanshanPetStats | null;
   propItems: KanshanPropItem[];
   taskItems: KanshanTaskItem[];
   onActionEnd?: (action: PetAction) => void;
@@ -334,6 +336,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     modelUrl,
     needsLogin = false,
     ownerName,
+    petStats,
     propItems,
     taskItems,
     dialogueText,
@@ -369,7 +372,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     const [isMenuHovered, setIsMenuHovered] = useState(false);
     const [isChatFocused, setIsChatFocused] = useState(false);
     const [isDialogueHovered, setIsDialogueHovered] = useState(false);
-    const [activeMenuItem, setActiveMenuItem] = useState<'pat' | 'props' | 'tasks' | 'chat' | null>(null);
+    const [activeMenuItem, setActiveMenuItem] = useState<'pat' | 'like' | 'props' | 'tasks' | 'chat' | null>(null);
     const [openPanel, setOpenPanel] = useState<'props' | 'tasks' | 'chat' | null>(null);
     const stageDragRef = useRef<{ pointerId: number; startClientX: number; startClientY: number; startPosition: StagePosition } | null>(null);
     const patClipNameRef = useRef(KANSHAN_PAT_RAW_CLIP_NAME);
@@ -1015,8 +1018,8 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     };
 
     const playPatAction = () => {
-      playbackModeRef.current = 'semantic';
       onPatStart();
+      playbackModeRef.current = 'semantic';
       runtimeRef.current?.send({
         type: 'playClip',
         clipName: patClipNameRef.current,
@@ -1091,6 +1094,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
           onChatDialoguePageIndexChange={setChatDialoguePageIndex}
           snapEdge={snapEdge}
         />
+        {!needsLogin && petStats ? <PetStatsPanel isActive={isMenuActive} menuPlacement={menuPlacement} stats={petStats} /> : null}
         {needsLogin ? (
           <div
             className="pet-hover-menu pet-hover-menu--login is-active"
@@ -1227,8 +1231,40 @@ function BubbleDialogue({
   );
 }
 
+function PetStatsPanel({ isActive, menuPlacement, stats }: { isActive: boolean; menuPlacement: PetMenuPlacement; stats: KanshanPetStats }) {
+  const panelPlacement = menuPlacement === 'left' ? 'right' : 'left';
+  const items = [
+    { key: 'hunger', label: '饥', title: '饥饿值', value: stats.hunger },
+    { key: 'happiness', label: '乐', title: '快乐值', value: stats.happiness },
+    { key: 'spirit', label: '神', title: '精神值', value: stats.spirit },
+  ] as const;
+
+  return (
+    <div className={`pet-stats-panel pet-stats-panel--${panelPlacement}${isActive ? ' is-active' : ''}`} aria-label="看山状态值">
+      {items.map((item) => {
+        const value = clampStatValue(item.value);
+        return (
+          <span key={item.key} className={`pet-stat-meter pet-stat-meter--${item.key}`} title={`${item.title} ${value}`}>
+            <span className="pet-stat-meter__track" aria-hidden="true">
+              <span className="pet-stat-meter__fill" style={{ height: `${value}%` }} />
+            </span>
+            <span className="pet-stat-meter__label">{item.label}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function clampStatValue(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  if (value < 0) return 0;
+  if (value > 100) return 100;
+  return Math.round(value);
+}
+
 interface KanshanHoverMenuProps {
-  activeMenuItem: 'pat' | 'props' | 'tasks' | 'chat' | null;
+  activeMenuItem: 'pat' | 'like' | 'props' | 'tasks' | 'chat' | null;
   chatInput: string;
   isActive: boolean;
   isDialogueStreaming: boolean;
@@ -1247,7 +1283,7 @@ interface KanshanHoverMenuProps {
   onChatSubmit: () => void;
   onChatFocusChange: (focused: boolean) => void;
   onMenuHoverChange: (hovered: boolean) => void;
-  onActiveMenuItemChange: (item: 'pat' | 'props' | 'tasks' | 'chat' | null) => void;
+  onActiveMenuItemChange: (item: 'pat' | 'like' | 'props' | 'tasks' | 'chat' | null) => void;
   onOpenPanelChange: (panel: 'props' | 'tasks' | 'chat' | null) => void;
 }
 
@@ -1305,7 +1341,7 @@ function KanshanHoverMenu({
     onOpenPanelChange(panel);
   };
 
-  const handlePrimaryHover = (item: 'pat' | 'props' | 'tasks' | 'chat') => {
+  const handlePrimaryHover = (item: 'pat' | 'like' | 'props' | 'tasks' | 'chat') => {
     onActiveMenuItemChange(item);
     if (item === 'props' || item === 'tasks' || item === 'chat') {
       onOpenPanelChange(item);
@@ -1319,6 +1355,10 @@ function KanshanHoverMenu({
     event.preventDefault();
     event.stopPropagation();
     void openExternalUrl(ZHIDA_AI_URL);
+  };
+
+  const handleLikeClick = () => {
+    void openExternalUrl(KANSHAN_LIKE_URL);
   };
 
   const closeMenuForPointerLeave = () => {
@@ -1359,6 +1399,12 @@ function KanshanHoverMenu({
             <span>摸摸它</span>
           </button>
         </div>
+        <div className={`pet-menu-item${activeMenuItem === 'like' ? ' is-open' : ''}`} onPointerEnter={() => handlePrimaryHover('like')} onFocus={() => handlePrimaryHover('like')}>
+          <button className={`pet-menu-button${activeMenuItem === 'like' ? ' is-menu-active' : ''}`} type="button" onClick={handleLikeClick}>
+            <LikeIcon />
+            <span>点赞</span>
+          </button>
+        </div>
         <div className={`pet-menu-item${openPanel === 'props' ? ' is-open' : ''}`} onPointerEnter={() => handlePrimaryHover('props')} onFocus={() => handlePrimaryHover('props')}>
           <button className="pet-menu-button" type="button" aria-haspopup="true" aria-expanded={openPanel === 'props'}>
             <PropIcon />
@@ -1394,7 +1440,7 @@ function KanshanHoverMenu({
               onRetryMenuData={onRetryMenuData}
             >
               {taskItems.map((item) => (
-                <button key={item.id} className="pet-submenu-row" type="button" role="menuitem" onClick={() => handleSelectTask(item)}>
+                <button key={item.id} className="pet-submenu-row" type="button" role="menuitem" disabled={item.action === 'disabled' || item.availableCount >= item.totalCount} title={item.disabledHint} onClick={() => handleSelectTask(item)}>
                   <span>{item.taskName}</span>
                   <strong>{item.availableCount}/{item.totalCount}</strong>
                 </button>
@@ -1499,6 +1545,15 @@ function PatIcon() {
       <path d="M7.4 12.2c-.7-1.7-.3-3.6 1.1-4.5 1.3-.9 3.1-.4 4.2 1.1.7-1.6 2.3-2.4 3.8-1.8 1.7.7 2.3 2.9 1.3 4.9-.8 1.7-2.6 3.3-5.5 4.8-2.5-1.1-4.1-2.6-4.9-4.5Z" />
       <path d="M4.8 8.6c.8-1.4 2-2.5 3.5-3.2" />
       <path d="M19.2 8.6c-.8-1.4-2-2.5-3.5-3.2" />
+    </svg>
+  );
+}
+
+function LikeIcon() {
+  return (
+    <svg className="pet-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7.2 10.5h3.2l1.1-4.3c.3-1.1 1.5-1.7 2.5-1.2.7.4 1.1 1.1 1 1.9l-.4 3.1h3.2c1.2 0 2.1 1.1 1.8 2.3l-1.1 4.9c-.2.9-1 1.6-2 1.6H7.2V10.5Z" />
+      <path d="M4.5 10.5h2.7v8.3H4.5z" />
     </svg>
   );
 }

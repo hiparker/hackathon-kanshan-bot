@@ -71,6 +71,20 @@ type progressResponse struct {
 	OK             bool         `json:"ok"`
 	Task           taskView     `json:"task"`
 	RewardsGranted []rewardView `json:"rewards_granted"`
+	NewState       *stateView   `json:"new_state,omitempty"`
+	ActionHint     string       `json:"action_hint,omitempty"`
+}
+
+type stateView struct {
+	Hunger     int    `json:"hunger"`
+	Happiness  int    `json:"happiness"`
+	Energy     int    `json:"energy"`
+	Spirit     int    `json:"spirit"`
+	Health     int    `json:"health"`
+	Growth     int    `json:"growth"`
+	Mood       string `json:"mood"`
+	Lifecycle  string `json:"lifecycle"`
+	LastTickAt int64  `json:"last_tick_at"`
 }
 
 func (h *Handler) progress(w http.ResponseWriter, r *http.Request) {
@@ -88,6 +102,8 @@ func (h *Handler) progress(w http.ResponseWriter, r *http.Request) {
 		OK:             true,
 		Task:           toTaskView(res.Task),
 		RewardsGranted: toRewards(res.RewardsGranted),
+		NewState:       toStateView(res.NewState),
+		ActionHint:     res.ActionHint,
 	})
 }
 
@@ -100,6 +116,23 @@ func toTaskView(t service.TaskView) taskView {
 		DoneCount:    t.DoneCount,
 		Rewards:      toRewards(t.Rewards),
 		TriggerEvent: t.TriggerEvent,
+	}
+}
+
+func toStateView(snap *service.PetSnapshot) *stateView {
+	if snap == nil {
+		return nil
+	}
+	return &stateView{
+		Hunger:     snap.Hunger,
+		Happiness:  snap.Happiness,
+		Energy:     snap.Energy,
+		Spirit:     snap.Spirit,
+		Health:     snap.Health,
+		Growth:     snap.Growth,
+		Mood:       snap.Mood,
+		Lifecycle:  snap.Lifecycle,
+		LastTickAt: snap.LastTickAt,
 	}
 }
 

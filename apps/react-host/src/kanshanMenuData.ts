@@ -13,6 +13,9 @@ export interface KanshanTaskItem {
   taskName: string;
   availableCount: number;
   totalCount: number;
+  action: 'open-url' | 'exercise' | 'disabled';
+  url?: string;
+  disabledHint?: string;
 }
 
 export interface KanshanDefaultState {
@@ -40,6 +43,12 @@ export interface KanshanPetSnapshot {
   lastTickAt: number;
 }
 
+export interface KanshanPetStats {
+  hunger: number;
+  happiness: number;
+  spirit: number;
+}
+
 export interface KanshanUsePropResult {
   actionHint: string;
   /** 道具生效后的看山状态；存在时不应再立刻调用 /pet/state/tick，以免二次衰减 */
@@ -56,6 +65,8 @@ export interface KanshanInteractResult {
 
 export interface KanshanProgressTaskResult {
   rewardsGranted: Array<{ kind: string; itemId?: string; qty?: number }>;
+  actionHint: string;
+  newState?: KanshanPetSnapshot;
 }
 
 export interface KanshanDebugStateInput {
@@ -157,6 +168,18 @@ interface InteractResponse {
 
 interface ProgressTaskResponse {
   rewards_granted?: Array<{ kind: string; item_id?: string; qty?: number }>;
+  action_hint?: string;
+  new_state?: {
+    hunger: number;
+    happiness: number;
+    spirit?: number;
+    energy: number;
+    health: number;
+    growth: number;
+    mood: string;
+    lifecycle: string;
+    last_tick_at: number;
+  };
 }
 
 interface RestockResponse {
@@ -178,7 +201,13 @@ const AUTH_MODE = import.meta.env.VITE_KANSHAN_AUTH_MODE || (import.meta.env.PRO
 const DEV_AUTH_CODE = import.meta.env.VITE_KANSHAN_AUTH_CODE || 'local-dev';
 const IS_DESKTOP_MODE = import.meta.env.MODE === 'desktop' || import.meta.env.VITE_KANSHAN_DESKTOP === 'true';
 const DESKTOP_SESSION_TOKEN = import.meta.env.VITE_KANSHAN_DESKTOP_SESSION_TOKEN || 's_u_local-dev';
-const TASK_PERIODS = ['daily', 'weekly', 'story', 'challenge'] as const;
+const TASK_ACTIONS: Record<string, Pick<KanshanTaskItem, 'action' | 'url' | 'disabledHint'>> = {
+  'browse-5-posts': { action: 'open-url', url: 'https://www.zhihu.com' },
+  'feed-2-times': { action: 'disabled', disabledHint: '请在道具菜单投喂' },
+  'comment-3-times': { action: 'open-url', url: 'https://www.zhihu.com' },
+  'exercise-2-times': { action: 'exercise' },
+  'chat-1-time': { action: 'disabled', disabledHint: '请在对话界面完成' },
+};
 
 function readStoredSession(): AuthResponse | null {
   try {
@@ -416,21 +445,33 @@ export async function fetchKanshanProps(): Promise<KanshanPropItem[]> {
 }
 
 export async function fetchKanshanTasks(): Promise<KanshanTaskItem[]> {
-  const results = await Promise.all(
-    TASK_PERIODS.map((period) => apiFetch<TasksResponse>(`/tasks?period=${period}`)),
-  );
+  const response = await apiFetch<TasksResponse>('/tasks?period=daily');
 
-  return results.flatMap((response) => response.tasks.map((task) => ({
+  return response.tasks.map((task) => ({
     id: task.task_id,
     taskName: task.name,
     availableCount: task.done_count,
     totalCount: task.target_count,
-  })));
+    ...(TASK_ACTIONS[task.task_id] ?? { action: 'disabled', disabledHint: '请在其他入口完成' }),
+  }));
 }
 
 export async function fetchKanshanDefaultState(): Promise<KanshanDefaultState> {
   const state = await apiFetch<PetStateResponse>('/pet/state/tick', { method: 'POST', body: '{}' });
   return { ...petSnapshotToDefaultState(petStateResponseToSnapshot(state)), actionHint: state.action_hint };
+}
+
+export async function fetchKanshanPetSnapshot(): Promise<KanshanPetSnapshot> {
+  const state = await apiFetch<PetStateResponse>('/pet/state');
+  return petStateResponseToSnapshot(state);
+}
+
+export function petSnapshotToStats(snapshot: KanshanPetSnapshot): KanshanPetStats {
+  return {
+    hunger: snapshot.hunger,
+    happiness: snapshot.happiness,
+    spirit: snapshot.spirit,
+  };
 }
 
 export async function useKanshanProp(itemId: string): Promise<KanshanUsePropResult> {
@@ -498,10 +539,10 @@ export async function debugRestockKanshanProp(itemId: string, qty = 1): Promise<
   };
 }
 
-export async function progressKanshanTask(taskId: string, delta = 1): Promise<KanshanProgressTaskResult> {
+export async function progressKanshanTask(taskId: string): Promise<KanshanProgressTaskResult> {
   const response = await apiFetch<ProgressTaskResponse>('/tasks/progress', {
     method: 'POST',
-    body: JSON.stringify({ task_id: taskId, delta }),
+    body: JSON.stringify({ task_id: taskId }),
   });
   return {
     rewardsGranted: (response.rewards_granted ?? []).map((reward) => ({
@@ -509,5 +550,7 @@ export async function progressKanshanTask(taskId: string, delta = 1): Promise<Ka
       itemId: reward.item_id,
       qty: reward.qty,
     })),
+    actionHint: response.action_hint ?? '',
+    newState: response.new_state ? petStateResponseToSnapshot(response.new_state) : undefined,
   };
 }

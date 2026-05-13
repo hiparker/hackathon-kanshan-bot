@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { resolveActionFromPetLike, sortKanshanProps } from '../kanshanMenuData';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fetchKanshanPetSnapshot, petSnapshotToStats, resolveActionFromPetLike, sortKanshanProps, storeKanshanSession } from '../kanshanMenuData';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe('kanshan menu data', () => {
   it('maps hunger and spirit thresholds to default actions', () => {
@@ -23,5 +28,40 @@ describe('kanshan menu data', () => {
       'cold-medicine',
       'revive-feather',
     ]);
+  });
+
+  it('fetches current pet stats without ticking state', async () => {
+    const storage = new Map<string, string>();
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
+        removeItem: (key: string) => storage.delete(key),
+      },
+    });
+    storeKanshanSession({
+      user_id: 'u1',
+      zhihu_user_id: 'z1',
+      name: 'tester',
+      session_token: 's1',
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+    });
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      hunger: 88,
+      happiness: 66,
+      spirit: 44,
+      energy: 44,
+      health: 100,
+      growth: 0,
+      mood: 'normal',
+      lifecycle: 'normal',
+      last_tick_at: 1,
+    }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const snapshot = await fetchKanshanPetSnapshot();
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/pet/state', expect.objectContaining({ headers: expect.any(Headers) }));
+    expect(petSnapshotToStats(snapshot)).toEqual({ hunger: 88, happiness: 66, spirit: 44 });
   });
 });

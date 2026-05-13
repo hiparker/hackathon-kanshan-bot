@@ -14,15 +14,16 @@ import (
 )
 
 type petStateService struct {
-	dao    dao.PetStateDao
-	random func() float64
-	rules  botconfig.Rules
+	dao            dao.PetStateDao
+	interactionDao dao.InteractionCountDao
+	random         func() float64
+	rules          botconfig.Rules
 }
 
 // NewPetStateService returns a service.PetStateService backed by the
 // dao/impl singleton.
 func NewPetStateService() service.PetStateService {
-	return &petStateService{dao: daoimpl.NewPetStateDao(), random: rand.Float64, rules: botconfig.MustLoadRules()}
+	return &petStateService{dao: daoimpl.NewPetStateDao(), interactionDao: daoimpl.NewInteractionCountDao(), random: rand.Float64, rules: botconfig.MustLoadRules()}
 }
 
 func (s *petStateService) Get(ctx context.Context, userID string) (service.PetSnapshot, error) {
@@ -107,6 +108,16 @@ func (s *petStateService) Interact(ctx context.Context, userID, action string) (
 	if !ok {
 		return service.PetInteractionResult{}, service.ErrBadRequest
 	}
+	if action == "pat" {
+		periodKey := dayPeriodKey(now)
+		count, err := s.interactionCount(ctx, userID, action, periodKey)
+		if err != nil {
+			return service.PetInteractionResult{}, service.ErrInternal
+		}
+		if count >= 10 {
+			return s.blockedInteract(ctx, userID, pet, "看山今天已经被摸摸 10 次了，明天再来吧。")
+		}
+	}
 	if botconfig.Contains(rule.BlockedLifecycles, pet.Lifecycle) {
 		return s.blockedInteract(ctx, userID, pet, blockedMessage(pet.Lifecycle, action))
 	}
@@ -131,6 +142,32 @@ func (s *petStateService) Interact(ctx context.Context, userID, action string) (
 	if err := s.dao.Save(ctx, toDao(userID, pet)); err != nil {
 		return service.PetInteractionResult{}, service.ErrInternal
 	}
+	if action == "pat" {
+		if _, err := s.incrementInteraction(ctx, userID, action, dayPeriodKey(now)); err != nil {
+			return service.PetInteractionResult{}, service.ErrInternal
+		}
+	}
+	return service.PetInteractionResult{NewState: toSnapshot(userID, pet), ActionHint: rule.ActionHint}, nil
+}
+
+func (s *petStateService) ApplyTaskEffect(ctx context.Context, userID, taskID string) (service.PetInteractionResult, error) {
+	rule, ok := s.rulesForUse().TaskEffects[taskID]
+	if !ok || len(rule.Effect) == 0 {
+		return service.PetInteractionResult{}, service.ErrBadRequest
+	}
+	pet, err := s.load(ctx, userID)
+	if err != nil {
+		return service.PetInteractionResult{}, err
+	}
+	now := time.Now().Unix()
+	bizstate.Apply(pet, now, bizstate.DefaultDecay)
+	if err := applyConfiguredEffect(pet, rule.Effect); err != nil {
+		return service.PetInteractionResult{}, service.ErrBadRequest
+	}
+	bizstate.NormalizeLifecycle(pet, now)
+	if err := s.dao.Save(ctx, toDao(userID, pet)); err != nil {
+		return service.PetInteractionResult{}, service.ErrInternal
+	}
 	return service.PetInteractionResult{NewState: toSnapshot(userID, pet), ActionHint: rule.ActionHint}, nil
 }
 
@@ -139,6 +176,24 @@ func (s *petStateService) rulesForUse() botconfig.Rules {
 		s.rules = botconfig.MustLoadRules()
 	}
 	return s.rules
+}
+
+func (s *petStateService) interactionCount(ctx context.Context, userID, action, periodKey string) (int, error) {
+	if s.interactionDao == nil {
+		return 0, nil
+	}
+	return s.interactionDao.GetCount(ctx, userID, action, periodKey)
+}
+
+func (s *petStateService) incrementInteraction(ctx context.Context, userID, action, periodKey string) (int, error) {
+	if s.interactionDao == nil {
+		return 0, nil
+	}
+	return s.interactionDao.Increment(ctx, userID, action, periodKey)
+}
+
+func dayPeriodKey(ts int64) string {
+	return time.Unix(ts, 0).UTC().Add(8 * time.Hour).Format("2006-01-02")
 }
 
 func applyConfiguredEffect(pet *bizstate.Pet, effect map[string]any) error {

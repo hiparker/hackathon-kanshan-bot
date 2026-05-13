@@ -82,6 +82,33 @@
       }
     }
   },
+  "task_rewards": {
+    "browse-5-posts": [
+      { "item_id": "fish-jerky", "qty": 1, "probability": 0.6 },
+      { "item_id": "yarn-ball", "qty": 1, "probability": 0.15 },
+      { "item_id": "cat-baton", "qty": 1, "probability": 0.15 },
+      { "item_id": "nutrition-can", "qty": 1, "probability": 0.1 }
+    ],
+    "comment-3-times": [
+      { "item_id": "yarn-ball", "qty": 1, "probability": 0.3 },
+      { "item_id": "cat-baton", "qty": 1, "probability": 0.3 },
+      { "item_id": "nutrition-can", "qty": 1, "probability": 0.3 },
+      { "item_id": "cold-medicine", "qty": 1, "probability": 0.1 }
+    ],
+    "chat-1-time": [
+      { "item_id": "revive-feather", "qty": 1, "probability": 0.05 }
+    ]
+  },
+  "task_effects": {
+    "exercise-2-times": {
+      "action_hint": "exercise-temporary",
+      "effect": {
+        "happiness": 5,
+        "spirit": 10,
+        "hunger": -2
+      }
+    }
+  },
   "item_action_rewards": {
     "high_happiness_threshold": 85,
     "high_happiness_probability": 0.3,

@@ -43,6 +43,9 @@ func (s *fakeInventoryPetState) Tick(context.Context, string) (service.PetSnapsh
 func (s *fakeInventoryPetState) Interact(context.Context, string, string) (service.PetInteractionResult, error) {
 	return service.PetInteractionResult{}, nil
 }
+func (s *fakeInventoryPetState) ApplyTaskEffect(context.Context, string, string) (service.PetInteractionResult, error) {
+	return service.PetInteractionResult{}, nil
+}
 func (s *fakeInventoryPetState) DebugSetState(context.Context, string, service.PetDebugStateInput) (service.PetSnapshot, error) {
 	return service.PetSnapshot{}, nil
 }
