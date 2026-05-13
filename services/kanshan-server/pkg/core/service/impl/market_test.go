@@ -193,6 +193,29 @@ func TestMarketSnapshotAllowsPartialFailures(t *testing.T) {
 	}
 }
 
+func TestParseOKXTickers(t *testing.T) {
+	body := `{"code":"0","msg":"","data":[
+		{"instId":"BTC-USDT","last":"100000","open24h":"99000"},
+		{"instId":"ETH-USDT","last":"3000","open24h":"2900"}
+	]}`
+	quotes, err := parseOKXTickers([]byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(quotes) != 2 {
+		t.Fatalf("want 2 quotes, got %d", len(quotes))
+	}
+	if quotes[0].Key != "btc" || quotes[0].Price != 100000 {
+		t.Fatalf("btc: %+v", quotes[0])
+	}
+	if quotes[0].ChangePercent == nil || *quotes[0].ChangePercent < 1.0 {
+		t.Fatalf("btc change: %+v", quotes[0].ChangePercent)
+	}
+	if quotes[1].Key != "eth" || quotes[1].Price != 3000 {
+		t.Fatalf("eth: %+v", quotes[1])
+	}
+}
+
 func TestParseZhihuHotPayload(t *testing.T) {
 	items, err := parseZhihuHotPayload([]byte(`{
 		"status": 0,

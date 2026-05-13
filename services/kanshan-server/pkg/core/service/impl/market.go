@@ -21,8 +21,9 @@ import (
 )
 
 const (
-	defaultWeatherBaseURL           = "https://wttr.in"
-	defaultCryptoURL                = "https://api.binance.com/api/v3/ticker/24hr?symbols=%5B%22BTCUSDT%22,%22ETHUSDT%22%5D"
+	defaultWeatherBaseURL = "https://wttr.in"
+	// OKX 公开行情，国内网络通常可达；仍可用 MARKET_CRYPTO_URL 指向 Binance/CoinGecko 等
+	defaultCryptoURL                = "https://www.okx.com/api/v5/market/tickers?instType=SPOT&instId=BTC-USDT,ETH-USDT"
 	defaultGoldURL                  = "https://api.gold-api.com/price/XAU"
 	defaultIndexURL                 = "https://hq.sinajs.cn/list=s_sh000001,s_sz399001,int_nasdaq,int_hangseng"
 	defaultDailyNewsURL             = "https://orz.ai/api/v1/dailynews/?platform=tenxunwang"
@@ -372,6 +373,9 @@ func (s *marketService) fetchCryptoQuotes(ctx context.Context) ([]service.Market
 	if quotes, err := parseBinanceQuotes(body); err == nil {
 		return quotes, nil
 	}
+	if quotes, err := parseOKXTickers(body); err == nil {
+		return quotes, nil
+	}
 	if quotes, err := parseCoinGeckoQuotes(body); err == nil {
 		return quotes, nil
 	}
@@ -425,6 +429,74 @@ func parseBinanceQuotes(body []byte) ([]service.MarketQuote, error) {
 	}
 	if len(quotes) == 0 {
 		return nil, fmt.Errorf("missing binance symbols")
+	}
+	return orderMarketQuotes(quotes), nil
+}
+
+// parseOKXTickers handles OKX v5 GET /api/v5/market/tickers (instId=BTC-USDT,ETH-USDT,…).
+func parseOKXTickers(body []byte) ([]service.MarketQuote, error) {
+	var payload struct {
+		Code string `json:"code"`
+		Msg  string `json:"msg"`
+		Data []struct {
+			InstID  string `json:"instId"`
+			Last    string `json:"last"`
+			Open24H string `json:"open24h"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	if payload.Code != "" && payload.Code != "0" {
+		msg := strings.TrimSpace(payload.Msg)
+		if msg == "" {
+			msg = fmt.Sprintf("code %s", payload.Code)
+		}
+		return nil, fmt.Errorf("okx: %s", msg)
+	}
+	if len(payload.Data) == 0 {
+		return nil, fmt.Errorf("empty okx tickers")
+	}
+
+	quotes := make([]service.MarketQuote, 0, 2)
+	for _, row := range payload.Data {
+		switch strings.TrimSpace(row.InstID) {
+		case "BTC-USDT", "BTC-USDC":
+			price, err := strconv.ParseFloat(strings.TrimSpace(row.Last), 64)
+			if err != nil {
+				continue
+			}
+			var changePct *float64
+			if open, err := strconv.ParseFloat(strings.TrimSpace(row.Open24H), 64); err == nil && open != 0 {
+				changePct = floatPtr((price - open) / open * 100.0)
+			}
+			quotes = append(quotes, service.MarketQuote{
+				Key:           "btc",
+				Label:         "BTC价格",
+				Price:         price,
+				Unit:          "USD",
+				ChangePercent: changePct,
+			})
+		case "ETH-USDT", "ETH-USDC":
+			price, err := strconv.ParseFloat(strings.TrimSpace(row.Last), 64)
+			if err != nil {
+				continue
+			}
+			var changePct *float64
+			if open, err := strconv.ParseFloat(strings.TrimSpace(row.Open24H), 64); err == nil && open != 0 {
+				changePct = floatPtr((price - open) / open * 100.0)
+			}
+			quotes = append(quotes, service.MarketQuote{
+				Key:           "eth",
+				Label:         "ETH价格",
+				Price:         price,
+				Unit:          "USD",
+				ChangePercent: changePct,
+			})
+		}
+	}
+	if len(quotes) == 0 {
+		return nil, fmt.Errorf("missing okx btc/eth tickers")
 	}
 	return orderMarketQuotes(quotes), nil
 }
