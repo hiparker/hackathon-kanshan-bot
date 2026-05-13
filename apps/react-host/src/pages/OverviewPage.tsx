@@ -22,7 +22,7 @@ export interface OverviewPageProps {
   chatError?: string;
 }
 
-const APP_VERSION = '0.1.0';
+const APP_VERSION = '2.0.1';
 
 function IconDownload() {
   return (
