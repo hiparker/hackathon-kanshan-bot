@@ -18,6 +18,7 @@ import {
   fetchKanshanTasks,
   fetchCurrentKanshanUser,
   getStoredKanshanUser,
+  hasStoredKanshanSession,
   isKanshanOAuthMode,
   petSnapshotToDefaultState,
   petSnapshotToStats,
@@ -149,6 +150,12 @@ export function App() {
       return;
     }
 
+    if (!IS_DESKTOP_MODE && pathname === '/' && !hasStoredKanshanSession()) {
+      setAuthStatus('redirecting');
+      redirectToZhihuLogin(window.location.href);
+      return;
+    }
+
     let isCurrent = true;
     fetchCurrentKanshanUser()
       .then((user) => {
@@ -168,7 +175,7 @@ export function App() {
     return () => {
       isCurrent = false;
     };
-  }, []);
+  }, [pathname]);
 
   useEffect(() => {
     const handleAuthMessage = (event: MessageEvent<KanshanAuthMessage>) => {
@@ -774,6 +781,10 @@ export function App() {
 
   if (IS_DESKTOP_MODE) {
     return <main className={shellClass}>{kanshanModelPreview}</main>;
+  }
+
+  if (pathname === '/' && SHOULD_REQUIRE_AUTH && authStatus !== 'authenticated') {
+    return <main className={shellClass} aria-busy="true" />;
   }
 
   return (

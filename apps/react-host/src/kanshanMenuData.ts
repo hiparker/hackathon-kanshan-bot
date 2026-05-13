@@ -258,6 +258,10 @@ function readStoredSession(): AuthResponse | null {
   }
 }
 
+export function hasStoredKanshanSession(): boolean {
+  return readStoredSession() !== null;
+}
+
 function writeStoredSession(session: AuthResponse) {
   window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
 }
