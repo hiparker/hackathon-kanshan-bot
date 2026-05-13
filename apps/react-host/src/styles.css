@@ -707,12 +707,12 @@ button[aria-disabled="true"]:hover {
 }
 
 .pet-stats-panel--right {
-  left: calc(50% + 118px);
+  left: calc(50% + 94px);
   transform: translate(10px, -50%);
 }
 
 .pet-stats-panel--left {
-  right: calc(50% + 118px);
+  right: calc(50% + 94px);
   transform: translate(-10px, -50%);
 }
 

@@ -934,32 +934,32 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
             setSnapEdge(edge);
             setDesktopMenuPlacement(nextMenuPlacement);
 
-            let targetX = position.x;
-            let targetY = position.y;
-            if (edge === 'left') targetX = workLeft - drag.stageViewportLeft * drag.scale;
-            if (edge === 'right') targetX = workRight - stageSize - drag.stageViewportLeft * drag.scale;
-            if (edge === 'top') targetY = workTop - drag.stageViewportTop * drag.scale;
-            if (edge === 'bottom') targetY = workBottom - stageSize - drag.stageViewportTop * drag.scale;
+            const nextStageViewportLeft = edge === 'left'
+              ? 0
+              : edge === 'right'
+                ? window.innerWidth - STAGE_SIZE
+                : (window.innerWidth - STAGE_SIZE) / 2;
+            const nextStageViewportTop = edge === 'top'
+              ? 0
+              : edge === 'bottom'
+                ? window.innerHeight - STAGE_SIZE
+                : (window.innerHeight - STAGE_SIZE) / 2;
+            const stageViewportLeftPhysical = nextStageViewportLeft * drag.scale;
+            const stageViewportTopPhysical = nextStageViewportTop * drag.scale;
 
-            const stageViewportLeftPhysical = drag.stageViewportLeft * drag.scale;
-            const stageViewportTopPhysical = drag.stageViewportTop * drag.scale;
+            let targetX = stageLeft - stageViewportLeftPhysical;
+            let targetY = stageTop - stageViewportTopPhysical;
+            if (edge === 'left') targetX = workLeft - stageViewportLeftPhysical;
+            if (edge === 'right') targetX = workRight - stageSize - stageViewportLeftPhysical;
+            if (edge === 'top') targetY = workTop - stageViewportTopPhysical;
+            if (edge === 'bottom') targetY = workBottom - stageSize - stageViewportTopPhysical;
+
             const minWindowXForStage = workLeft - stageViewportLeftPhysical;
             const maxWindowXForStage = workRight - stageSize - stageViewportLeftPhysical;
             const minWindowYForStage = workTop - stageViewportTopPhysical;
             const maxWindowYForStage = workBottom - stageSize - stageViewportTopPhysical;
             targetX = Math.min(Math.max(targetX, minWindowXForStage), maxWindowXForStage);
             targetY = Math.min(Math.max(targetY, minWindowYForStage), maxWindowYForStage);
-
-            const nextStageViewportLeft = edge === 'left'
-              ? 0
-              : edge === 'right'
-                ? window.innerWidth - STAGE_SIZE
-                : stageLeft / drag.scale - targetX / drag.scale;
-            const nextStageViewportTop = edge === 'top'
-              ? 0
-              : edge === 'bottom'
-                ? window.innerHeight - STAGE_SIZE
-                : stageTop / drag.scale - targetY / drag.scale;
 
             await drag.coreApi.invoke('kanshan_set_snap_edge', { edge });
             await drag.coreApi.invoke('kanshan_set_stage_position', {

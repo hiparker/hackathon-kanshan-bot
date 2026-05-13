@@ -5,6 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" href="/favicon.ico" />
     <title>刘看山陪伴 Bot React Host</title>
+    <style>
+      html.kanshan-desktop-mode,
+      html.kanshan-desktop-mode body,
+      html.kanshan-desktop-mode #root {
+        background: transparent !important;
+        background-color: transparent !important;
+      }
+    </style>
+    <script>
+      if ('%MODE%' === 'desktop') {
+        document.documentElement.classList.add('kanshan-desktop-mode');
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
