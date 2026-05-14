@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import type { PetAction } from '@kanshan/bridge';
-import newOverviewIslandBgUrl from '../pics/动森.png';
+import newOverviewIslandBgUrl from '../pics/background.png';
 import carouselLuo0 from '../pics/luo0.png';
 import carouselLuo1 from '../pics/luo1.jpeg';
 import carouselLuo2 from '../pics/luo2.jpeg';
