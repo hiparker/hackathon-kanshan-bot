@@ -75,7 +75,8 @@ function resolveActionHint(actionHint: string): PetAction | null {
 
 export function App() {
   const { pathname } = useLocation();
-  const embedInPanel = !IS_DESKTOP_MODE && (pathname === '/' || pathname === '/new_overview');
+  const pathnameRequiresWebOAuth = pathname === '/' || pathname === '/cyberstyle';
+  const embedInPanel = !IS_DESKTOP_MODE && pathnameRequiresWebOAuth;
   const previewRef = useRef<KanshanModelPreviewHandle | null>(null);
   const [defaultAction, setDefaultAction] = useState<PetAction>('idle');
   const defaultActionRef = useRef<PetAction>('idle');
@@ -151,7 +152,7 @@ export function App() {
       return;
     }
 
-    if (!IS_DESKTOP_MODE && pathname === '/' && !hasStoredKanshanSession()) {
+    if (!IS_DESKTOP_MODE && pathnameRequiresWebOAuth && !hasStoredKanshanSession()) {
       setAuthStatus('redirecting');
       redirectToZhihuLogin(window.location.href);
       return;
@@ -295,7 +296,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (IS_DESKTOP_MODE || pathname !== '/' || !SHOULD_REQUIRE_AUTH || authStatus !== 'unauthenticated') return;
+    if (IS_DESKTOP_MODE || (pathname !== '/' && pathname !== '/cyberstyle') || !SHOULD_REQUIRE_AUTH || authStatus !== 'unauthenticated') return;
     setAuthStatus('redirecting');
     redirectToZhihuLogin(window.location.href);
   }, [authStatus, pathname]);
@@ -784,36 +785,40 @@ export function App() {
     return <main className={shellClass}>{kanshanModelPreview}</main>;
   }
 
-  if (pathname === '/' && SHOULD_REQUIRE_AUTH && authStatus !== 'authenticated') {
+  if (pathnameRequiresWebOAuth && SHOULD_REQUIRE_AUTH && authStatus !== 'authenticated') {
     return <main className={shellClass} aria-busy="true" />;
   }
 
   return (
     <Routes>
-      <Route path="/" element={
-        <OverviewPage
-          shellClass={shellClass}
-          onPlayAction={playAction}
-          chatInput={chatInput}
-          onChatInputChange={setChatInput}
-          onChatSubmit={() => void submitChat()}
-          onChatInputKeyDown={handleChatInputKeyDown}
-          isSending={isSending}
-          chatText={resolvedDialogueText}
-          lastUserMessage={lastUserMessage}
-          chatError={chatError}
-        >
-          {kanshanModelPreview}
-        </OverviewPage>
-      } />
       <Route
-        path="/new_overview"
+        path="/"
         element={
           <NewOverviewPage shellClass={shellClass} userName={currentUser?.name} onPlayAction={playAction}>
             {kanshanModelPreview}
           </NewOverviewPage>
         }
       />
+      <Route
+        path="/cyberstyle"
+        element={
+          <OverviewPage
+            shellClass={shellClass}
+            onPlayAction={playAction}
+            chatInput={chatInput}
+            onChatInputChange={setChatInput}
+            onChatSubmit={() => void submitChat()}
+            onChatInputKeyDown={handleChatInputKeyDown}
+            isSending={isSending}
+            chatText={resolvedDialogueText}
+            lastUserMessage={lastUserMessage}
+            chatError={chatError}
+          >
+            {kanshanModelPreview}
+          </OverviewPage>
+        }
+      />
+      <Route path="/new_overview" element={<Navigate to="/" replace />} />
       <Route
         path="/debug"
         element={
