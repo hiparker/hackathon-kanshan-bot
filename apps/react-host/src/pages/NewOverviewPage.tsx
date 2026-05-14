@@ -38,10 +38,14 @@ const CAROUSEL_SLIDES: { src: string; alt: string }[] = [
   { src: carouselLuo5, alt: '展台画面 5' },
 ];
 
-const DEMO_VIDEOS: { title: string; src: string }[] = [
-  { title: '演示一', src: demoSp1 },
-  { title: '演示二', src: demoSp2 },
-  { title: '演示三', src: demoSp3 },
+const DEMO_VIDEOS: { title: string; src: string; caption: ReactNode }[] = [
+  {
+    title: '演示一',
+    src: demoSp1,
+    caption: "看山播报",
+  },
+  { title: '演示二', src: demoSp2, caption: '日常状态' },
+  { title: '演示三', src: demoSp3, caption: '跳舞状态' },
 ];
 
 export interface NewOverviewPageProps {
@@ -111,7 +115,7 @@ function IconVideoPause() {
   );
 }
 
-function DemoVideoTile({ title, src }: { title: string; src: string }) {
+function DemoVideoTile({ title, src, caption }: { title: string; src: string; caption: ReactNode }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
 
@@ -185,6 +189,7 @@ function DemoVideoTile({ title, src }: { title: string; src: string }) {
           </button>
         </div>
       </div>
+      <p className="overview-dash__video-caption">{caption}</p>
     </article>
   );
 }
@@ -326,7 +331,7 @@ export function NewOverviewPage({ shellClass, children, userName, onPlayAction }
 
             <section className="overview-card overview-dash__card overview-dash__card--preview">
               <h3 className="overview-dash__sidebar-preview-title">桌宠预览</h3>
-              <p className="overview-dash__sidebar-preview-meta">实时画面 · 可拖拽</p>
+              <p className="overview-dash__sidebar-preview-meta">下载后真实桌面效果，可在对话框提问</p>
               <div className="overview-preview-slot overview-dash__preview-slot overview-dash__preview-slot--sidebar">{children}</div>
             </section>
 
@@ -357,7 +362,7 @@ export function NewOverviewPage({ shellClass, children, userName, onPlayAction }
                 <p className="overview-dash__tagline">刘看山展台</p>
               </div>
               <div className="overview-dash__top-actions">
-                <Link to="/" className="overview-btn overview-dash__cyber-home-link">
+                <Link to="/cyberstyle" className="overview-btn overview-dash__cyber-home-link">
                   体验赛博风格
                 </Link>
                 <span className="overview-dash__like-wrap">
@@ -409,11 +414,16 @@ export function NewOverviewPage({ shellClass, children, userName, onPlayAction }
               </div>
             </section>
 
-            <section className="overview-dash__videos" aria-label="演示视频">
-              {DEMO_VIDEOS.map((item) => (
-                <DemoVideoTile key={item.title} title={item.title} src={item.src} />
-              ))}
-            </section>
+            <div className="overview-dash__videos-wrap">
+              <h3 id="overview-dash-videos-heading" className="overview-dash__videos-heading">
+                桌面实时画面展示视频
+              </h3>
+              <section className="overview-dash__videos" aria-labelledby="overview-dash-videos-heading">
+                {DEMO_VIDEOS.map((item) => (
+                  <DemoVideoTile key={item.title} title={item.title} src={item.src} caption={item.caption} />
+                ))}
+              </section>
+            </div>
           </div>
         </div>
 
@@ -423,10 +433,16 @@ export function NewOverviewPage({ shellClass, children, userName, onPlayAction }
             role="dialog"
             aria-modal="true"
             aria-labelledby="install-modal-title"
-            onClick={() => setInstallModalOpen(false)}
           >
             <div className="overview-dash__install-modal-card">
-              <p className="overview-dash__install-modal-hint">点击任意处关闭</p>
+              <button
+                type="button"
+                className="overview-dash__install-modal-close"
+                aria-label="关闭"
+                onClick={() => setInstallModalOpen(false)}
+              >
+                <span aria-hidden="true">×</span>
+              </button>
               <span className="overview-install__eyebrow">Mac 内部测试版</span>
               <h2 id="install-modal-title" className="overview-dash__install-modal-title">
                 下载后按 3 步打开刘看山

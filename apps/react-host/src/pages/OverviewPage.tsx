@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import type { PetAction } from '@kanshan/bridge';
 import UnicornScene from 'unicornstudio-react';
 
@@ -121,6 +122,15 @@ export function OverviewPage({
         />
       </div>
       <div className="overview-page">
+        <div className="overview-header__corner">
+          <Link
+            to="/"
+            className="overview-btn overview-btn--secondary overview-header__home-style-link"
+            style={{ textDecoration: 'none' }}
+          >
+            体验居家风格
+          </Link>
+        </div>
         <header className="overview-header">
           <div className="overview-header__title-row">
             <h1 className="overview-header__title">今天开始和刘看山同居｜桌面 AI 宠物初体验</h1>

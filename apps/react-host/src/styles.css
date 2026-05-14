@@ -2386,6 +2386,20 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
 }
 
+.overview-header__corner {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin: 0 0 10px;
+}
+
+.overview-header__home-style-link {
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 10px 18px;
+  min-height: 0;
+}
+
 .overview-header {
   text-align: center;
   margin-bottom: 40px;
@@ -3270,7 +3284,7 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   height: 100% !important;
 }
 
-/* —— /new_overview 海岛底图：cover 避免过度放大发糊；卡片去掉 backdrop-filter —— */
+/* —— 居家总览（根路径 /）海岛底图：cover 避免过度放大发糊；卡片去掉 backdrop-filter —— */
 .glb-shell--new-overview:not(.glb-shell--desktop) {
   background: #9bd8ee;
   color: rgba(58, 45, 34, 0.92);
@@ -3583,7 +3597,7 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   color: rgba(255, 255, 255, 0.42);
 }
 
-/* —— /new_overview 侧栏 + 主区布局（与 overview 同色玻璃体系）—— */
+/* —— 居家总览（根路径 /）侧栏 + 主区布局（与 overview 同色玻璃体系）—— */
 .overview-dash__card--project {
   border-radius: 22px;
   padding: 22px 20px 20px;
@@ -4409,6 +4423,25 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   height: min(240px, calc(100% - 16px));
 }
 
+.overview-dash__videos-wrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.overview-dash__videos-heading {
+  margin: 0 0 10px;
+  padding: 0 2px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.glb-shell--new-overview:not(.glb-shell--desktop) .overview-dash__videos-heading {
+  color: rgba(58, 45, 34, 0.72);
+}
+
 .overview-dash__videos {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -4444,6 +4477,38 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   border: none;
   background: linear-gradient(160deg, rgba(15, 23, 42, 0.88), rgba(6, 10, 22, 0.96));
   aspect-ratio: 1 / 1;
+}
+
+.overview-dash__video-caption {
+  margin: 0;
+  padding: 8px 8px 4px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.glb-shell--new-overview:not(.glb-shell--desktop) .overview-dash__video-caption {
+  color: rgba(58, 45, 34, 0.76);
+}
+
+.overview-dash__video-caption-link {
+  color: rgba(103, 232, 249, 0.95);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.overview-dash__video-caption-link:hover {
+  color: #a5f3fc;
+}
+
+.glb-shell--new-overview:not(.glb-shell--desktop) .overview-dash__video-caption-link {
+  color: rgba(30, 110, 150, 0.98);
+}
+
+.glb-shell--new-overview:not(.glb-shell--desktop) .overview-dash__video-caption-link:hover {
+  color: rgba(20, 85, 125, 1);
 }
 
 .overview-dash__video-el {
@@ -4622,6 +4687,7 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
 }
 
 .overview-dash__install-modal-card {
+  position: relative;
   max-width: 560px;
   width: 100%;
   border-radius: 22px;
@@ -4630,16 +4696,49 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
     linear-gradient(145deg, rgba(34, 211, 238, 0.1), rgba(8, 47, 73, 0.35)),
     rgba(5, 11, 22, 0.92);
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.45);
-  padding: 22px 22px 20px;
+  padding: 22px 48px 20px 22px;
   color: rgba(255, 255, 255, 0.78);
 }
 
-.overview-dash__install-modal-hint {
-  margin: 0 0 12px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: rgba(103, 232, 249, 0.85);
-  text-align: center;
+.overview-dash__install-modal-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.38);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1.45rem;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+  transform: none;
+  box-shadow: none;
+}
+
+.overview-dash__install-modal-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.38);
+  color: #fff;
+  transform: none;
+  box-shadow: none;
+}
+
+.overview-dash__install-modal-close:focus-visible {
+  outline: 2px solid rgba(103, 232, 249, 0.95);
+  outline-offset: 2px;
+  transform: none;
 }
 
 .overview-dash__install-modal-title {
