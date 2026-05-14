@@ -38,6 +38,7 @@ import {
 import { kanshanModelConfig } from './kanshanModelConfig';
 import { KanshanModelPreview, openExternalUrl, type KanshanModelPreviewHandle, type KanshanRewardToast } from './KanshanModelPreview';
 import { OverviewPage } from './pages/OverviewPage';
+import { NewOverviewPage } from './pages/NewOverviewPage';
 import {
   chooseKanshanMarketReactionAction,
   pickKanshanMarketDialogueCandidate,
@@ -74,7 +75,7 @@ function resolveActionHint(actionHint: string): PetAction | null {
 
 export function App() {
   const { pathname } = useLocation();
-  const embedInPanel = !IS_DESKTOP_MODE && pathname === '/';
+  const embedInPanel = !IS_DESKTOP_MODE && (pathname === '/' || pathname === '/new_overview');
   const previewRef = useRef<KanshanModelPreviewHandle | null>(null);
   const [defaultAction, setDefaultAction] = useState<PetAction>('idle');
   const defaultActionRef = useRef<PetAction>('idle');
@@ -805,6 +806,14 @@ export function App() {
           {kanshanModelPreview}
         </OverviewPage>
       } />
+      <Route
+        path="/new_overview"
+        element={
+          <NewOverviewPage shellClass={shellClass} userName={currentUser?.name} onPlayAction={playAction}>
+            {kanshanModelPreview}
+          </NewOverviewPage>
+        }
+      />
       <Route
         path="/debug"
         element={

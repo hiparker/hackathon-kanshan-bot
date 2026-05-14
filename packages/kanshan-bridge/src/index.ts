@@ -42,6 +42,7 @@ export type PetCommand =
 
 export type PetRuntimeEvent =
   | { type: 'ready' }
+  | { type: 'modelLoadProgress'; loaded: number; total: number }
   | { type: 'animationClipMapReady'; clipNames: string[]; missingClipNames: string[] }
   | { type: 'actionStart'; action: PetAction }
   | { type: 'animationClipStart'; action: PetAction; clipName: string; durationMs?: number; loop?: boolean }

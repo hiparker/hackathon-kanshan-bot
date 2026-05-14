@@ -250,7 +250,14 @@ export class KanshanThreeRuntime implements KanshanRuntimeBridge {
         this.validateConfiguredClips();
         this.playActionClip(this.currentAction, true);
       },
-      undefined,
+      (progress) => {
+        if (this.disposed) return;
+        this.emit({
+          type: 'modelLoadProgress',
+          loaded: progress.loaded ?? 0,
+          total: progress.total ?? 0,
+        });
+      },
       (error) => {
         this.emit({ type: 'error', code: 'MODEL_LOAD_FAILED', message: error instanceof Error ? error.message : String(error) });
       },
