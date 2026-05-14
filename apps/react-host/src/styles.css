@@ -4179,6 +4179,15 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   margin: 24px 0 8px;
 }
 
+.overview-dash__copyright {
+  margin: 18px 0 0;
+  color: rgba(238, 245, 255, 0.58);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
 .overview-dash__intro {
   margin-top: 12px;
 }

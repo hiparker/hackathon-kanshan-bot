@@ -425,6 +425,10 @@ export function NewOverviewPage({ shellClass, children, userName, onPlayAction }
                 ))}
               </section>
             </div>
+
+            <footer className="overview-dash__copyright" aria-label="版权信息">
+              © 2026 今天开始和刘看山同居 · 知乎 Hackathon 2026 参赛作品
+            </footer>
           </div>
         </div>
 
