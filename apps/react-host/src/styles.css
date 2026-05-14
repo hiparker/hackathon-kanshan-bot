@@ -4181,11 +4181,12 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
 
 .overview-dash__copyright {
   margin: 18px 0 0;
-  color: rgba(238, 245, 255, 0.58);
+  color: rgba(15, 23, 42, 0.82);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 800;
   letter-spacing: 0.02em;
   text-align: center;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.62);
 }
 
 .overview-dash__intro {
