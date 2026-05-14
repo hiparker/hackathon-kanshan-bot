@@ -8,6 +8,8 @@ const MAC_ARM_DOWNLOAD_URL = import.meta.env.VITE_KANSHAN_DOWNLOAD_MAC_ARM_URL |
 const MAC_INTEL_DOWNLOAD_URL = import.meta.env.VITE_KANSHAN_DOWNLOAD_MAC_INTEL_URL || 'https://github.com/hiparker/hackathon-kanshan-bot/releases/download/v1.0.12/Liu-Kanshan_1.0.4_macos_intel_unsigned.zip';
 const WINDOWS_DOWNLOAD_URL = import.meta.env.VITE_KANSHAN_DOWNLOAD_WINDOWS_URL || 'https://upload.bedebug.com/hackathon-2026/kanshan-exe.zip';
 
+const MAC_INSTALL_HELP_VIDEO_URL = 'https://www.zhihu.com/pin/2038237770338891383';
+
 export interface OverviewPageProps {
   shellClass: string;
   children: ReactNode;
@@ -214,6 +216,11 @@ export function OverviewPage({
               </li>
             </ol>
             <code className="overview-install__command">xattr -d com.apple.quarantine /Applications/刘看山.app</code>
+            <p className="overview-install__video-link">
+              <a href={MAC_INSTALL_HELP_VIDEO_URL} target="_blank" rel="noopener noreferrer">
+                视频操作说明（知乎）
+              </a>
+            </p>
           </section>
         </header>
 

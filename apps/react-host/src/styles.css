@@ -2584,6 +2584,28 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   white-space: nowrap;
 }
 
+.overview-install .overview-install__video-link {
+  grid-column: 1 / -1;
+}
+
+.overview-install__video-link {
+  margin: 14px 0 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.overview-install__video-link a {
+  color: #67e8f9;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.overview-install__video-link a:hover {
+  color: #a5f3fc;
+}
+
 @media (max-width: 760px) {
   .overview-install {
     grid-template-columns: 1fr;
