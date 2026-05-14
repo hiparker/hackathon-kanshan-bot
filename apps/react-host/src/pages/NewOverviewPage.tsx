@@ -18,6 +18,7 @@ const MAC_INTEL_DOWNLOAD_URL = import.meta.env.VITE_KANSHAN_DOWNLOAD_MAC_INTEL_U
 const WINDOWS_DOWNLOAD_URL = import.meta.env.VITE_KANSHAN_DOWNLOAD_WINDOWS_URL || 'https://upload.bedebug.com/hackathon-2026/kanshan-exe.zip';
 
 const ZHIHU_PIN_URL = 'https://www.zhihu.com/pin/2037137126333096270';
+const MAC_INSTALL_HELP_VIDEO_URL = 'https://www.zhihu.com/pin/2038237770338891383';
 
 const PROJECT_TITLE = '今天开始和刘看山同居';
 const PROJECT_INTRO = '桌面信息的最小生态位，打通知乎距离用户的最后一公里';
@@ -467,6 +468,11 @@ export function NewOverviewPage({ shellClass, children, userName, onPlayAction }
                 </li>
               </ol>
               <code className="overview-install__command">xattr -d com.apple.quarantine /Applications/刘看山.app</code>
+              <p className="overview-install__video-link">
+                <a href={MAC_INSTALL_HELP_VIDEO_URL} target="_blank" rel="noopener noreferrer">
+                  视频操作说明（知乎）
+                </a>
+              </p>
             </div>
           </div>
         ) : null}
