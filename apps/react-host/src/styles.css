@@ -3343,9 +3343,19 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
     inset 0 0 0 1px rgba(255, 255, 255, 0.35);
 }
 
+.glb-shell--new-overview:not(.glb-shell--desktop) .overview-dash__video-card.overview-card {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
 .glb-shell--new-overview:not(.glb-shell--desktop) .overview-dash__video-frame {
-  border-color: rgba(74, 124, 86, 0.15);
-  background: linear-gradient(160deg, rgba(132, 196, 148, 0.62), rgba(74, 130, 98, 0.78));
+  background: #0a0e16;
+}
+
+.glb-shell--new-overview:not(.glb-shell--desktop) .overview-dash__video-el {
+  background: #0a0e16;
 }
 
 .glb-shell--new-overview:not(.glb-shell--desktop) .overview-dash__download-gh {
@@ -4194,7 +4204,8 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
   opacity: 0;
   transition: opacity 0.65s ease;
 }
@@ -4240,11 +4251,14 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   border-color: rgba(34, 211, 238, 0.55);
   background: rgba(34, 211, 238, 0.18);
   color: #ecfeff;
+  /* 覆盖全局 button:hover 的 transform，保持 translateY(-50%) 垂直居中 */
+  transform: translateY(-50%);
 }
 
 .overview-dash__carousel-nav:focus-visible {
   outline: 2px solid #67e8f9;
   outline-offset: 2px;
+  transform: translateY(-50%);
 }
 
 .overview-dash__carousel-nav--prev {
@@ -4275,11 +4289,13 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   background: rgba(0, 0, 0, 0.48);
   color: #fff;
   box-shadow: none;
+  transform: translateY(-50%);
 }
 
 .overview-dash__carousel-nav--minimal:focus-visible {
   outline: 1px solid rgba(255, 255, 255, 0.55);
   outline-offset: 2px;
+  transform: translateY(-50%);
 }
 
 .overview-dash__live,
@@ -4396,7 +4412,8 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
 .overview-dash__videos {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  gap: 8px;
+  width: 100%;
   align-items: stretch;
 }
 
@@ -4410,23 +4427,98 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 12px;
-  border-radius: 20px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 16px;
 }
 
 .overview-dash__video-frame {
-  display: grid;
+  display: block;
+  position: relative;
   flex: 1;
   min-height: 0;
-  place-items: center;
-  align-content: center;
-  gap: 8px;
-  padding: 20px 16px;
-  text-align: center;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 0;
+  border: none;
   background: linear-gradient(160deg, rgba(15, 23, 42, 0.88), rgba(6, 10, 22, 0.96));
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 1 / 1;
+}
+
+.overview-dash__video-el {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  background: transparent;
+  cursor: pointer;
+}
+
+.overview-dash__video-controls {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: 6px 8px;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.overview-dash__video-play {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  margin: 0;
+  border: 2px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  background: rgba(8, 12, 22, 0.55);
+  color: #fff;
+  cursor: pointer;
+  transform: none;
+  transition:
+    opacity 0.28s ease,
+    visibility 0.28s ease,
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+  box-shadow: none;
+  user-select: none;
+  pointer-events: auto;
+}
+
+.overview-dash__video-frame--playing .overview-dash__video-controls {
+  pointer-events: none;
+}
+
+.overview-dash__video-frame--playing .overview-dash__video-play {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.overview-dash__video-frame--playing:hover .overview-dash__video-play {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.overview-dash__video-play:hover {
+  background: rgba(8, 12, 22, 0.72);
+  border-color: rgba(255, 255, 255, 0.92);
+  box-shadow: none;
+  transform: none;
+}
+
+.overview-dash__video-play:focus-visible {
+  outline: 2px solid rgba(103, 232, 249, 0.95);
+  outline-offset: 3px;
+  transform: none;
 }
 
 .overview-dash__video-placeholder-title {
@@ -4439,6 +4531,12 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   font-size: 0.78rem;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.45);
+}
+
+.overview-dash__hero-visual--carousel-only {
+  min-height: 0;
+  width: 100%;
+  aspect-ratio: 16 / 9;
 }
 
 .overview-dash__hero-visual--carousel-only::before {
