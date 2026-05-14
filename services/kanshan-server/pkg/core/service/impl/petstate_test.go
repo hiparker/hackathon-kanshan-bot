@@ -14,6 +14,19 @@ type fakePetStateDao struct {
 	row dao.PetState
 }
 
+type fakeInteractionCountDao struct {
+	count int
+}
+
+func (d *fakeInteractionCountDao) GetCount(context.Context, string, string, string) (int, error) {
+	return d.count, nil
+}
+
+func (d *fakeInteractionCountDao) Increment(context.Context, string, string, string) (int, error) {
+	d.count++
+	return d.count, nil
+}
+
 func (d *fakePetStateDao) Get(context.Context, string) (dao.PetState, error) {
 	return d.row, nil
 }
@@ -95,6 +108,45 @@ func TestInteractPatBlockedWhenHungry(t *testing.T) {
 	}
 	if store.row.Happiness != 100 {
 		t.Fatalf("blocked pat should not mutate happiness, got %+v", store.row)
+	}
+}
+
+func TestInteractPatDailyLimit(t *testing.T) {
+	now := time.Now().Unix()
+	store := &fakePetStateDao{row: dao.PetState{
+		UserID:     "u1",
+		Hunger:     100,
+		Happiness:  50,
+		Energy:     10,
+		Health:     100,
+		Mood:       "normal",
+		Lifecycle:  "normal",
+		LastTickAt: now,
+	}}
+	counts := &fakeInteractionCountDao{count: 9}
+	svc := &petStateService{
+		dao:            store,
+		interactionDao: counts,
+		random:         func() float64 { return 1 },
+		rules: botconfig.Rules{Interactions: map[string]botconfig.InteractionRule{
+			"pat": {Effect: map[string]any{"happiness": 1}},
+		}},
+	}
+
+	res, err := svc.Interact(context.Background(), "u1", "pat")
+	if err != nil {
+		t.Fatalf("10th pat should be allowed, got %v", err)
+	}
+	if counts.count != 10 || res.NewState.Happiness != 51 {
+		t.Fatalf("expected 10th pat to apply, count=%d res=%+v", counts.count, res)
+	}
+
+	res, err = svc.Interact(context.Background(), "u1", "pat")
+	if err != service.ErrPetActionNotAllowed {
+		t.Fatalf("11th pat should be blocked, got %v", err)
+	}
+	if counts.count != 10 || store.row.Happiness != 51 || res.Message == "" {
+		t.Fatalf("blocked pat should not mutate state or count, count=%d row=%+v res=%+v", counts.count, store.row, res)
 	}
 }
 

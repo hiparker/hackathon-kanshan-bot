@@ -15,6 +15,7 @@ import (
 
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/basic/util/session"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/auth"
+	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/chat"
 	distillportal "github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/distill"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/inventory"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/portal/mcp"
@@ -58,6 +59,7 @@ func New(logger *slog.Logger) http.Handler {
 		r.Route("/tasks", task.New().Routes)
 		r.Route("/stats", stats.New().Routes)
 		r.Route("/distill", distillportal.New().Routes)
+		r.Route("/chat", chat.New().Routes)
 	})
 
 	logger.Info("router ready",
@@ -83,6 +85,8 @@ func New(logger *slog.Logger) http.Handler {
 			"GET /api/distill/mock-corpus",
 			"POST /api/distill/profile",
 			"POST /api/distill/snippets",
+			"GET /api/chat/history",
+			"POST /api/chat/completions",
 		},
 	)
 	return r

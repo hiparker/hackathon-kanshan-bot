@@ -123,6 +123,7 @@ type PetStateService interface {
 	Get(ctx context.Context, userID string) (PetSnapshot, error)
 	Tick(ctx context.Context, userID string) (PetSnapshot, error)
 	Interact(ctx context.Context, userID, action string) (PetInteractionResult, error)
+	ApplyTaskEffect(ctx context.Context, userID, taskID string) (PetInteractionResult, error)
 	DebugSetState(ctx context.Context, userID string, input PetDebugStateInput) (PetSnapshot, error)
 	// CompleteItemUse applies decay, validates precondition, runs decrement (typically
 	// inventory deduct), merges effect_json into pet, and saves. decrement is skipped
@@ -154,6 +155,8 @@ type TaskView struct {
 type ProgressResult struct {
 	Task           TaskView
 	RewardsGranted []Reward
+	NewState       *PetSnapshot
+	ActionHint     string
 }
 
 // TaskService owns task listing and progress accounting.

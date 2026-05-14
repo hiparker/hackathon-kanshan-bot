@@ -8,6 +8,13 @@ export interface StreamChatOptions {
   signal?: AbortSignal;
 }
 
+export interface ChatHistoryTurn {
+  id: number;
+  query: string;
+  answer: string;
+  createdAt: number;
+}
+
 interface OpenAiStreamDelta {
   content?: string;
 }
@@ -20,11 +27,14 @@ interface OpenAiStreamChunk {
   choices?: OpenAiStreamChoice[];
 }
 
-const OPENAI_BASE_URL = (import.meta.env.VITE_OPENAI_BASE_URL?.replace(/\/$/, '') || 'https://api.openai.com/v1');
-const CHAT_COMPLETIONS_URL = import.meta.env.PROD && OPENAI_BASE_URL
-
-  ? `${OPENAI_BASE_URL}/chat/completions`
-  : '/proxy-openai/chat/completions';
+const DEFAULT_API_BASE_URL = import.meta.env.PROD ? 'https://kanshan.bedebug.com' : '';
+const CONFIGURED_API_BASE_URL = import.meta.env.VITE_KANSHAN_API_BASE_URL || DEFAULT_API_BASE_URL;
+const API_PREFIX = import.meta.env.PROD ? `${CONFIGURED_API_BASE_URL.replace(/\/$/, '')}/api` : '/api';
+const CHAT_COMPLETIONS_URL = `${API_PREFIX}/chat/completions`;
+const CHAT_HISTORY_URL = `${API_PREFIX}/chat/history`;
+const AUTH_STORAGE_KEY = 'kanshan.session';
+const IS_DESKTOP_MODE = import.meta.env.MODE === 'desktop' || import.meta.env.VITE_KANSHAN_DESKTOP === 'true';
+const DESKTOP_SESSION_TOKEN = import.meta.env.VITE_KANSHAN_DESKTOP_SESSION_TOKEN || 's_u_local-dev';
 
 function consumeSseBuffer(
   buffer: string,
@@ -61,36 +71,38 @@ interface ChatMessage {
   content: string;
 }
 
-function useSecondMeChat(): boolean {
-  const v = import.meta.env.VITE_SECONDME_CHAT;
-  return v === '1' || v === 'true';
+function getSessionToken(): string {
+  try {
+    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return IS_DESKTOP_MODE ? DESKTOP_SESSION_TOKEN : '';
+    const session = JSON.parse(raw) as { sessionToken?: string; session_token?: string };
+    return session.sessionToken || session.session_token || (IS_DESKTOP_MODE ? DESKTOP_SESSION_TOKEN : '');
+  } catch {
+    return IS_DESKTOP_MODE ? DESKTOP_SESSION_TOKEN : '';
+  }
 }
 
-/** SecondMe Lab：POST /api/secondme/chat/stream，单轮 message + 可选 systemPrompt（与 OpenAI messages[] 互转） */
-function messagesToSecondMePayload(messages: ChatMessage[]): {
-  message: string;
-  systemPrompt?: string;
-} {
-  const systemParts = messages.filter((m) => m.role === 'system').map((m) => m.content.trim()).filter(Boolean);
-  const systemPrompt = systemParts.length > 0 ? systemParts.join('\n\n') : undefined;
-
-  const dialogue = messages.filter((m) => m.role !== 'system');
-  let message: string;
-  if (dialogue.length === 0) {
-    message = '';
-  } else if (dialogue.length === 1) {
-    const only = dialogue[0]!;
-    message = only.role === 'user' ? only.content : `助手：${only.content}`;
-  } else {
-    message = dialogue
-      .map((m) => {
-        const label = m.role === 'user' ? '用户' : '助手';
-        return `${label}：${m.content}`;
-      })
-      .join('\n\n');
+export async function fetchChatHistory(): Promise<ChatHistoryTurn[]> {
+  const headers: Record<string, string> = {};
+  const sessionToken = getSessionToken();
+  if (sessionToken) {
+    headers['X-Session-Token'] = sessionToken;
   }
 
-  return { message, systemPrompt };
+  const response = await fetch(CHAT_HISTORY_URL, { headers });
+  if (!response.ok) {
+    const errorText = await response.text();
+    const message = parseChatErrorMessage(errorText) ?? errorText;
+    throw new Error(`Chat history request failed with status ${response.status}: ${message}`);
+  }
+
+  const body = await response.json() as { turns?: Array<{ id: number; query: string; answer: string; created_at: number }> };
+  return (body.turns ?? []).map((turn) => ({
+    id: turn.id,
+    query: turn.query,
+    answer: turn.answer,
+    createdAt: turn.created_at,
+  }));
 }
 
 async function fetchOpenAiStream(
@@ -98,55 +110,25 @@ async function fetchOpenAiStream(
   handlers: StreamChatHandlers,
   options: StreamChatOptions = {},
 ): Promise<void> {
-  const secondMe = useSecondMeChat();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`,
   };
-  const appId = import.meta.env.VITE_SECONDME_APP_ID;
-  if (appId) {
-    headers['X-App-Id'] = appId;
-  }
-
-  let body: Record<string, unknown>;
-  if (secondMe) {
-    const { message, systemPrompt } = messagesToSecondMePayload(messages);
-    body = {
-      message,
-      ...(systemPrompt ? { systemPrompt } : {}),
-      ...(import.meta.env.VITE_OPENAI_MODEL ? { model: import.meta.env.VITE_OPENAI_MODEL } : {}),
-    };
-    const maxTok = import.meta.env.VITE_SECONDME_MAX_TOKENS;
-    if (maxTok) {
-      const n = Number(maxTok);
-      if (Number.isFinite(n) && n > 0) {
-        body.maxTokens = n;
-      }
-    }
-    if (import.meta.env.VITE_SECONDME_WEB_SEARCH === '1' || import.meta.env.VITE_SECONDME_WEB_SEARCH === 'true') {
-      body.enableWebSearch = true;
-    }
-  } else {
-    body = {
-      model: import.meta.env.VITE_OPENAI_MODEL,
-      stream: true,
-      messages,
-      thinking: {
-        type: 'disabled',
-      },
-    };
+  const sessionToken = getSessionToken();
+  if (sessionToken) {
+    headers['X-Session-Token'] = sessionToken;
   }
 
   const response = await fetch(CHAT_COMPLETIONS_URL, {
     method: 'POST',
     headers,
-    body: JSON.stringify(body),
+    body: JSON.stringify({ stream: true, messages }),
     signal: options.signal,
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Chat request failed with status ${response.status}: ${errorText}`);
+    const message = parseChatErrorMessage(errorText) ?? errorText;
+    throw new Error(`Chat request failed with status ${response.status}: ${message}`);
   }
 
   if (!response.body) {
@@ -180,6 +162,26 @@ async function fetchOpenAiStream(
   }
 
   handlers.onDone?.(fullText);
+}
+
+function parseChatErrorMessage(raw: string): string | null {
+  try {
+    const body = JSON.parse(raw) as {
+      error?: {
+        message?: string;
+        details?: {
+          upstream_status?: number;
+          upstream_body?: string;
+        };
+      };
+    };
+    const upstreamStatus = body.error?.details?.upstream_status;
+    const upstreamBody = body.error?.details?.upstream_body;
+    if (upstreamStatus && upstreamBody) return `模型服务 ${upstreamStatus}: ${upstreamBody}`;
+    return body.error?.message ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function buildDistilledSystemPrompt(profileBrief: string): string {

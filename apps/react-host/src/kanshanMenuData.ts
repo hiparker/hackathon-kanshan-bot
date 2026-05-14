@@ -6,6 +6,13 @@ export interface KanshanPropItem {
   name: string;
   actionHint?: string;
   precondition?: string;
+  rewardHint?: string;
+}
+
+export interface KanshanRewardItem {
+  kind: string;
+  itemId?: string;
+  qty?: number;
 }
 
 export interface KanshanTaskItem {
@@ -13,6 +20,11 @@ export interface KanshanTaskItem {
   taskName: string;
   availableCount: number;
   totalCount: number;
+  action: 'open-url' | 'exercise' | 'disabled';
+  url?: string;
+  disabledHint?: string;
+  rewards: KanshanRewardItem[];
+  rewardHint?: string;
 }
 
 export interface KanshanDefaultState {
@@ -40,6 +52,12 @@ export interface KanshanPetSnapshot {
   lastTickAt: number;
 }
 
+export interface KanshanPetStats {
+  hunger: number;
+  happiness: number;
+  spirit: number;
+}
+
 export interface KanshanUsePropResult {
   actionHint: string;
   /** 道具生效后的看山状态；存在时不应再立刻调用 /pet/state/tick，以免二次衰减 */
@@ -55,7 +73,9 @@ export interface KanshanInteractResult {
 }
 
 export interface KanshanProgressTaskResult {
-  rewardsGranted: Array<{ kind: string; itemId?: string; qty?: number }>;
+  rewardsGranted: KanshanRewardItem[];
+  actionHint: string;
+  newState?: KanshanPetSnapshot;
 }
 
 export interface KanshanDebugStateInput {
@@ -118,6 +138,7 @@ interface TasksResponse {
     name: string;
     target_count: number;
     done_count: number;
+    rewards?: Array<{ kind: string; item_id?: string; qty?: number }>;
   }>;
 }
 
@@ -157,6 +178,18 @@ interface InteractResponse {
 
 interface ProgressTaskResponse {
   rewards_granted?: Array<{ kind: string; item_id?: string; qty?: number }>;
+  action_hint?: string;
+  new_state?: {
+    hunger: number;
+    happiness: number;
+    spirit?: number;
+    energy: number;
+    health: number;
+    growth: number;
+    mood: string;
+    lifecycle: string;
+    last_tick_at: number;
+  };
 }
 
 interface RestockResponse {
@@ -178,7 +211,40 @@ const AUTH_MODE = import.meta.env.VITE_KANSHAN_AUTH_MODE || (import.meta.env.PRO
 const DEV_AUTH_CODE = import.meta.env.VITE_KANSHAN_AUTH_CODE || 'local-dev';
 const IS_DESKTOP_MODE = import.meta.env.MODE === 'desktop' || import.meta.env.VITE_KANSHAN_DESKTOP === 'true';
 const DESKTOP_SESSION_TOKEN = import.meta.env.VITE_KANSHAN_DESKTOP_SESSION_TOKEN || 's_u_local-dev';
-const TASK_PERIODS = ['daily', 'weekly', 'story', 'challenge'] as const;
+const TASK_ACTIONS: Record<string, Pick<KanshanTaskItem, 'action' | 'url' | 'disabledHint'>> = {
+  'browse-5-posts': { action: 'open-url', url: 'https://www.zhihu.com' },
+  'feed-2-times': { action: 'disabled', disabledHint: '请在道具菜单投喂' },
+  'comment-3-times': { action: 'open-url', url: 'https://www.zhihu.com' },
+  'exercise-2-times': { action: 'exercise' },
+  'chat-1-time': { action: 'disabled', disabledHint: '请在对话界面完成' },
+};
+
+const PROP_REWARD_HINTS: Record<string, string> = {
+  'fish-jerky': '使用后：饥饿 +25',
+  'nutrition-can': '使用后：饥饿 +50，健康 +10',
+  'yarn-ball': '使用后：快乐 +15，精力 +10',
+  'cat-baton': '使用后：快乐 +30',
+  'cold-medicine': '生病时使用：健康 +40',
+  'revive-feather': '死亡时使用：恢复正常',
+  'energy-drink': '使用后：精力 +40',
+};
+
+const ITEM_NAME_MAP: Record<string, string> = {
+  'fish-jerky': '小鱼干',
+  'nutrition-can': '营养罐头',
+  'yarn-ball': '毛线球',
+  'cat-baton': '指挥猫棒',
+  'cold-medicine': '感冒药',
+  'revive-feather': '复活羽毛',
+  'energy-drink': '能量饮料',
+};
+
+const TASK_REWARD_HINTS: Record<string, string> = {
+  'browse-5-posts': '完成后：随机道具',
+  'comment-3-times': '完成后：随机道具',
+  'chat-1-time': '完成后：小概率复活羽毛',
+  'exercise-2-times': '完成后：快乐 +5，精力 +10',
+};
 
 function readStoredSession(): AuthResponse | null {
   try {
@@ -190,6 +256,10 @@ function readStoredSession(): AuthResponse | null {
   } catch {
     return null;
   }
+}
+
+export function hasStoredKanshanSession(): boolean {
+  return readStoredSession() !== null;
 }
 
 function writeStoredSession(session: AuthResponse) {
@@ -396,6 +466,25 @@ function petStateResponseToSnapshot(state: PetStateResponse | UsePropResponse['n
   };
 }
 
+function mapReward(reward: { kind: string; item_id?: string; qty?: number }): KanshanRewardItem {
+  return {
+    kind: reward.kind,
+    itemId: reward.item_id,
+    qty: reward.qty,
+  };
+}
+
+function formatRewardHint(rewards: KanshanRewardItem[]): string | undefined {
+  if (rewards.length === 0) return undefined;
+  const rewardLabels = rewards.map((reward) => {
+    const qty = reward.qty && reward.qty > 1 ? ` x${reward.qty}` : '';
+    if (reward.kind === 'item' && reward.itemId) return `${ITEM_NAME_MAP[reward.itemId] ?? reward.itemId}${qty}`;
+    if (reward.kind === 'growth') return `成长 +${reward.qty ?? 0}`;
+    return reward.kind;
+  });
+  return `完成后：${rewardLabels.join('、')}`;
+}
+
 export function sortKanshanProps(items: KanshanPropItem[]): KanshanPropItem[] {
   const bottomOrder: Record<string, number> = {
     'cold-medicine': 98,
@@ -412,25 +501,43 @@ export async function fetchKanshanProps(): Promise<KanshanPropItem[]> {
     count: item.qty,
     actionHint: item.action_hint,
     precondition: item.precondition,
+    rewardHint: PROP_REWARD_HINTS[item.item_id],
   })));
 }
 
 export async function fetchKanshanTasks(): Promise<KanshanTaskItem[]> {
-  const results = await Promise.all(
-    TASK_PERIODS.map((period) => apiFetch<TasksResponse>(`/tasks?period=${period}`)),
-  );
+  const response = await apiFetch<TasksResponse>('/tasks?period=daily');
 
-  return results.flatMap((response) => response.tasks.map((task) => ({
-    id: task.task_id,
-    taskName: task.name,
-    availableCount: task.done_count,
-    totalCount: task.target_count,
-  })));
+  return response.tasks.map((task) => {
+    const rewards = (task.rewards ?? []).map(mapReward);
+    return {
+      id: task.task_id,
+      taskName: task.name,
+      availableCount: task.done_count,
+      totalCount: task.target_count,
+      rewards,
+      rewardHint: formatRewardHint(rewards) ?? TASK_REWARD_HINTS[task.task_id],
+      ...(TASK_ACTIONS[task.task_id] ?? { action: 'disabled', disabledHint: '请在其他入口完成' }),
+    };
+  });
 }
 
 export async function fetchKanshanDefaultState(): Promise<KanshanDefaultState> {
   const state = await apiFetch<PetStateResponse>('/pet/state/tick', { method: 'POST', body: '{}' });
   return { ...petSnapshotToDefaultState(petStateResponseToSnapshot(state)), actionHint: state.action_hint };
+}
+
+export async function fetchKanshanPetSnapshot(): Promise<KanshanPetSnapshot> {
+  const state = await apiFetch<PetStateResponse>('/pet/state');
+  return petStateResponseToSnapshot(state);
+}
+
+export function petSnapshotToStats(snapshot: KanshanPetSnapshot): KanshanPetStats {
+  return {
+    hunger: snapshot.hunger,
+    happiness: snapshot.happiness,
+    spirit: snapshot.spirit,
+  };
 }
 
 export async function useKanshanProp(itemId: string): Promise<KanshanUsePropResult> {
@@ -498,16 +605,14 @@ export async function debugRestockKanshanProp(itemId: string, qty = 1): Promise<
   };
 }
 
-export async function progressKanshanTask(taskId: string, delta = 1): Promise<KanshanProgressTaskResult> {
+export async function progressKanshanTask(taskId: string): Promise<KanshanProgressTaskResult> {
   const response = await apiFetch<ProgressTaskResponse>('/tasks/progress', {
     method: 'POST',
-    body: JSON.stringify({ task_id: taskId, delta }),
+    body: JSON.stringify({ task_id: taskId }),
   });
   return {
-    rewardsGranted: (response.rewards_granted ?? []).map((reward) => ({
-      kind: reward.kind,
-      itemId: reward.item_id,
-      qty: reward.qty,
-    })),
+    rewardsGranted: (response.rewards_granted ?? []).map(mapReward),
+    actionHint: response.action_hint ?? '',
+    newState: response.new_state ? petStateResponseToSnapshot(response.new_state) : undefined,
   };
 }

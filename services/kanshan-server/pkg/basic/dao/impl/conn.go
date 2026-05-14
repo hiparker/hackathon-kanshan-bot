@@ -84,5 +84,11 @@ func NewPetStateDao() dao.PetStateDao { return &petStateDao{db: mustConn()} }
 // NewTaskDao returns a dao.TaskDao backed by the package-level connection.
 func NewTaskDao() dao.TaskDao { return &taskDao{db: mustConn()} }
 
+// NewInteractionCountDao returns a dao.InteractionCountDao backed by the package-level connection.
+func NewInteractionCountDao() dao.InteractionCountDao { return &interactionCountDao{db: mustConn()} }
+
 // NewStatsDao returns a dao.StatsDao backed by the package-level connection.
 func NewStatsDao() dao.StatsDao { return &statsDao{db: mustConn()} }
+
+// NewChatHistoryDao returns a dao.ChatHistoryDao backed by the package-level connection.
+func NewChatHistoryDao() dao.ChatHistoryDao { return &chatHistoryDao{db: mustConn()} }

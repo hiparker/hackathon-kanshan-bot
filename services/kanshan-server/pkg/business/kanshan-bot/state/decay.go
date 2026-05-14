@@ -32,9 +32,9 @@ type DecayPerHour struct {
 var DefaultDecay = DecayPerHour{
 	HealthNormal:    0,
 	HealthSick:      0,
-	Happiness:       0,
+	Happiness:       5,
 	Hunger:          2,
-	Energy:          0,
+	Energy:          1,
 	HappinessIgnore: 5,
 }
 
@@ -51,6 +51,8 @@ func Apply(pet *Pet, now int64, decay DecayPerHour) *Pet {
 	}
 
 	pet.Hunger = clamp(pet.Hunger - decay.Hunger*deltaHours)
+	pet.Happiness = clamp(pet.Happiness - decay.Happiness*deltaHours)
+	pet.Energy = clamp(pet.Energy - decay.Energy*deltaHours)
 	NormalizeLifecycle(pet, now)
 
 	pet.LastTickAt = now

@@ -19,8 +19,8 @@ func TestApplyHourlyDecay(t *testing.T) {
 	if pet.Health != 100 {
 		t.Fatalf("Health expected unchanged 100, got %d", pet.Health)
 	}
-	if pet.Hunger != 98 || pet.Happiness != 100 || pet.Energy != 100 {
-		t.Fatalf("expected hunger-only decay, got %+v", pet)
+	if pet.Hunger != 98 || pet.Happiness != 95 || pet.Energy != 99 {
+		t.Fatalf("expected hourly hunger, happiness, and energy decay, got %+v", pet)
 	}
 	if pet.LastTickAt != 3600 {
 		t.Fatalf("LastTickAt expected 3600, got %d", pet.LastTickAt)

@@ -8,7 +8,7 @@ import {
   resolveKanshanClipDialogue,
   resolveKanshanClipName,
 } from './kanshanActionConfig';
-import type { KanshanPropItem, KanshanTaskItem } from './kanshanMenuData';
+import type { KanshanPetStats, KanshanPropItem, KanshanTaskItem } from './kanshanMenuData';
 
 /** 模型加载条：假进度约 60s 内随机缓涨，真实就绪后一次性拉满 */
 const FAKE_MODEL_LOAD_DURATION_MS = 60_000;
@@ -24,16 +24,20 @@ type PetSnapEdge = PetMenuPlacement | 'top-left' | 'top-right' | 'bottom-left' |
 type StagePosition = { x: number; y: number };
 type DialoguePlacement = PetMenuPlacement;
 type BubbleMode = 'action' | 'chat';
+type PetLifecycle = 'normal' | 'sick' | 'dead' | string;
 type TauriWindowApi = typeof import('@tauri-apps/api/window');
 type TauriCoreApi = typeof import('@tauri-apps/api/core');
 type DesktopMonitorInfo = Awaited<ReturnType<TauriWindowApi['availableMonitors']>>[number];
 type DesktopMonitorWorkArea = DesktopMonitorInfo['workArea'];
 type DesktopWindowDragState = {
   appWindow: ReturnType<TauriWindowApi['getCurrentWindow']>;
+  beginStarted: boolean;
   coreApi: TauriCoreApi;
   monitors: DesktopMonitorInfo[];
   pointerId: number;
   scale: number;
+  startClientX: number;
+  startClientY: number;
   stagePointerX: number;
   stagePointerY: number;
   stageViewportLeft: number;
@@ -44,11 +48,13 @@ type DesktopWindowDragState = {
 const STAGE_SIZE = 300;
 /** 桌面端仅舞台中心 50% 触发窗口拖动；整舞台仍接收事件以兼顾菜单/气泡悬停。 */
 const DESKTOP_WINDOW_DRAG_MARGIN_FRAC = 0.25;
+const DESKTOP_WINDOW_DRAG_SNAP_THRESHOLD_PX = 6;
 const INTERACTION_GRACE_MS = 420;
 const ZHIDA_AI_URL = 'https://zhida.ai/';
+const KANSHAN_LIKE_URL = 'https://www.zhihu.com/hackathon/project/23';
 const CHAT_DIALOGUE_EMPTY_TEXT = '和我说点什么吧，我会在这里回应你。';
 
-async function openExternalUrl(url: string) {
+export async function openExternalUrl(url: string) {
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('kanshan_open_external_url', { url });
@@ -308,6 +314,8 @@ interface KanshanModelPreviewProps {
   modelUrl: string;
   needsLogin?: boolean;
   ownerName?: string;
+  petLifecycle?: string;
+  petStats?: KanshanPetStats | null;
   propItems: KanshanPropItem[];
   taskItems: KanshanTaskItem[];
   onActionEnd?: (action: PetAction) => void;
@@ -328,6 +336,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     embedInPanel = false,
     actionRevision,
     activeAction,
+    chatError,
     chatInput,
     desktopMode = false,
     dialogueLinkUrl,
@@ -337,6 +346,8 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     modelUrl,
     needsLogin = false,
     ownerName,
+    petLifecycle = 'normal',
+    petStats,
     propItems,
     taskItems,
     dialogueText,
@@ -373,7 +384,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     const [isMenuHovered, setIsMenuHovered] = useState(false);
     const [isChatFocused, setIsChatFocused] = useState(false);
     const [isDialogueHovered, setIsDialogueHovered] = useState(false);
-    const [activeMenuItem, setActiveMenuItem] = useState<'pat' | 'props' | 'tasks' | 'chat' | null>(null);
+    const [activeMenuItem, setActiveMenuItem] = useState<'pat' | 'like' | 'props' | 'tasks' | 'chat' | null>(null);
     const [openPanel, setOpenPanel] = useState<'props' | 'tasks' | 'chat' | null>(null);
     const stageDragRef = useRef<{ pointerId: number; startClientX: number; startClientY: number; startPosition: StagePosition } | null>(null);
     const patClipNameRef = useRef(KANSHAN_PAT_RAW_CLIP_NAME);
@@ -854,17 +865,18 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
               appWindow.scaleFactor(),
               windowApi.availableMonitors(),
             ]);
-            await coreApi.invoke('kanshan_begin_window_drag');
             if (desktopDragSerialRef.current !== serialAtDown) {
-              await coreApi.invoke('kanshan_end_window_drag');
               return;
             }
             desktopWindowDragRef.current = {
               appWindow,
+              beginStarted: false,
               coreApi,
               monitors,
               pointerId: event.pointerId,
               scale,
+              startClientX: event.clientX,
+              startClientY: event.clientY,
               stagePointerX: event.clientX - stageRect.left,
               stagePointerY: event.clientY - stageRect.top,
               stageViewportLeft: stageRect.left,
@@ -902,7 +914,20 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
 
     const handleStageDragMove = (event: React.PointerEvent<HTMLElement>) => {
       if (desktopMode) {
-        if (!desktopWindowDragRef.current) return;
+        const drag = desktopWindowDragRef.current;
+        if (!drag) return;
+        if (!drag.beginStarted) {
+          if (Math.hypot(event.clientX - drag.startClientX, event.clientY - drag.startClientY) < DESKTOP_WINDOW_DRAG_SNAP_THRESHOLD_PX) {
+            return;
+          }
+          drag.beginStarted = true;
+          void drag.coreApi.invoke('kanshan_begin_window_drag').catch((error) => {
+            desktopWindowDragRef.current = null;
+            isStageDraggingRef.current = false;
+            setIsStageDragging(false);
+            console.warn('[kanshan] failed to start desktop window drag', error);
+          });
+        }
         event.preventDefault();
         return;
       }
@@ -926,7 +951,9 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
           try {
             const coreApi = desktopCoreApiRef.current ?? (await import('@tauri-apps/api/core'));
             desktopCoreApiRef.current = coreApi;
-            await coreApi.invoke('kanshan_end_window_drag');
+            if (drag?.beginStarted) {
+              await coreApi.invoke('kanshan_end_window_drag');
+            }
           } catch {
             /* ignore */
           }
@@ -946,6 +973,10 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
         isStageDraggingRef.current = false;
         setIsStageDragging(false);
         event.preventDefault();
+
+        if (!drag.beginStarted || Math.hypot(event.clientX - drag.startClientX, event.clientY - drag.startClientY) < DESKTOP_WINDOW_DRAG_SNAP_THRESHOLD_PX) {
+          return;
+        }
 
         void (async () => {
           try {
@@ -987,32 +1018,32 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
             setSnapEdge(edge);
             setDesktopMenuPlacement(nextMenuPlacement);
 
-            let targetX = position.x;
-            let targetY = position.y;
-            if (edge === 'left') targetX = workLeft - drag.stageViewportLeft * drag.scale;
-            if (edge === 'right') targetX = workRight - stageSize - drag.stageViewportLeft * drag.scale;
-            if (edge === 'top') targetY = workTop - drag.stageViewportTop * drag.scale;
-            if (edge === 'bottom') targetY = workBottom - stageSize - drag.stageViewportTop * drag.scale;
+            const nextStageViewportLeft = edge === 'left'
+              ? 0
+              : edge === 'right'
+                ? window.innerWidth - STAGE_SIZE
+                : (window.innerWidth - STAGE_SIZE) / 2;
+            const nextStageViewportTop = edge === 'top'
+              ? 0
+              : edge === 'bottom'
+                ? window.innerHeight - STAGE_SIZE
+                : (window.innerHeight - STAGE_SIZE) / 2;
+            const stageViewportLeftPhysical = nextStageViewportLeft * drag.scale;
+            const stageViewportTopPhysical = nextStageViewportTop * drag.scale;
 
-            const stageViewportLeftPhysical = drag.stageViewportLeft * drag.scale;
-            const stageViewportTopPhysical = drag.stageViewportTop * drag.scale;
+            let targetX = stageLeft - stageViewportLeftPhysical;
+            let targetY = stageTop - stageViewportTopPhysical;
+            if (edge === 'left') targetX = workLeft - stageViewportLeftPhysical;
+            if (edge === 'right') targetX = workRight - stageSize - stageViewportLeftPhysical;
+            if (edge === 'top') targetY = workTop - stageViewportTopPhysical;
+            if (edge === 'bottom') targetY = workBottom - stageSize - stageViewportTopPhysical;
+
             const minWindowXForStage = workLeft - stageViewportLeftPhysical;
             const maxWindowXForStage = workRight - stageSize - stageViewportLeftPhysical;
             const minWindowYForStage = workTop - stageViewportTopPhysical;
             const maxWindowYForStage = workBottom - stageSize - stageViewportTopPhysical;
             targetX = Math.min(Math.max(targetX, minWindowXForStage), maxWindowXForStage);
             targetY = Math.min(Math.max(targetY, minWindowYForStage), maxWindowYForStage);
-
-            const nextStageViewportLeft = edge === 'left'
-              ? 0
-              : edge === 'right'
-                ? window.innerWidth - STAGE_SIZE
-                : stageLeft / drag.scale - targetX / drag.scale;
-            const nextStageViewportTop = edge === 'top'
-              ? 0
-              : edge === 'bottom'
-                ? window.innerHeight - STAGE_SIZE
-                : stageTop / drag.scale - targetY / drag.scale;
 
             await drag.coreApi.invoke('kanshan_set_snap_edge', { edge });
             await drag.coreApi.invoke('kanshan_set_stage_position', {
@@ -1071,14 +1102,23 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     };
 
     const playPatAction = () => {
-      playbackModeRef.current = 'semantic';
       onPatStart();
+      playbackModeRef.current = 'semantic';
       runtimeRef.current?.send({
         type: 'playClip',
         clipName: patClipNameRef.current,
         loop: false,
         repetitions: 2,
       });
+    };
+
+    const handleStageDoubleClick = (event: React.MouseEvent<HTMLElement>) => {
+      if (!isCanvasDragTarget(event.target)) return;
+      if (needsLogin || isStageDraggingRef.current) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      playPatAction();
     };
 
     useEffect(() => {
@@ -1109,6 +1149,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
         onPointerMove={handleStageDragMove}
         onPointerUp={handleStageDragEnd}
         onPointerCancel={handleStageDragEnd}
+        onDoubleClick={handleStageDoubleClick}
         onPointerEnter={() => {
           clearStageHoverGraceTimer();
           setIsStageHovered(true);
@@ -1149,6 +1190,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
         <BubbleDialogue
           actionDialogueText={actionDialogueText}
           bubbleMode={bubbleMode}
+          chatError={chatError}
           chatDialoguePageIndex={chatDialoguePageIndex}
           chatDialoguePages={chatDialoguePages}
           chatShellRef={chatShellRef}
@@ -1158,6 +1200,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
           onChatDialoguePageIndexChange={setChatDialoguePageIndex}
           snapEdge={snapEdge}
         />
+        {!needsLogin && petStats ? <PetStatsPanel isActive={isMenuActive} menuPlacement={menuPlacement} stats={petStats} /> : null}
         {needsLogin ? (
           <div
             className="pet-hover-menu pet-hover-menu--login is-active"
@@ -1184,6 +1227,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
             placement={menuPlacement}
             menuDataStatus={menuDataStatus}
             rewardToast={rewardToast}
+            petLifecycle={petLifecycle}
             propItems={propItems}
             taskItems={taskItems}
             onPat={playPatAction}
@@ -1218,6 +1262,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
 interface BubbleDialogueProps {
   actionDialogueText: string;
   bubbleMode: BubbleMode;
+  chatError: string;
   chatDialoguePageIndex: number;
   chatDialoguePages: string[];
   chatShellRef: React.MutableRefObject<HTMLDivElement | null>;
@@ -1231,6 +1276,7 @@ interface BubbleDialogueProps {
 function BubbleDialogue({
   actionDialogueText,
   bubbleMode,
+  chatError,
   chatDialoguePageIndex,
   chatDialoguePages,
   chatShellRef,
@@ -1242,7 +1288,7 @@ function BubbleDialogue({
 }: BubbleDialogueProps) {
   const hasTrimmedDialogue = bubbleMode === 'chat' && chatDialoguePages.length > 1;
   const resolvedDialogueText = bubbleMode === 'chat'
-    ? (chatDialoguePages[chatDialoguePageIndex] ?? chatDialoguePages.at(-1) ?? '')
+    ? (chatError || chatDialoguePages[chatDialoguePageIndex] || chatDialoguePages.at(-1) || '')
     : actionDialogueText;
   const displayedChatDialogueText = resolvedDialogueText
     || (isDialogueStreaming ? '看山正在回复…' : CHAT_DIALOGUE_EMPTY_TEXT);
@@ -1294,8 +1340,54 @@ function BubbleDialogue({
   );
 }
 
+function PetStatsPanel({ isActive, menuPlacement, stats }: { isActive: boolean; menuPlacement: PetMenuPlacement; stats: KanshanPetStats }) {
+  const panelPlacement = menuPlacement === 'left' ? 'right' : 'left';
+  const items = [
+    { key: 'hunger', label: '饥', title: '饥饿值', value: stats.hunger },
+    { key: 'happiness', label: '乐', title: '快乐值', value: stats.happiness },
+    { key: 'spirit', label: '神', title: '精神值', value: stats.spirit },
+  ] as const;
+
+  return (
+    <div className={`pet-stats-panel pet-stats-panel--${panelPlacement}${isActive ? ' is-active' : ''}`} aria-label="看山状态值">
+      {items.map((item) => {
+        const value = clampStatValue(item.value);
+        return (
+          <span key={item.key} className={`pet-stat-meter pet-stat-meter--${item.key}`} title={`${item.title} ${value}`}>
+            <span className="pet-stat-meter__track" aria-hidden="true">
+              <span className="pet-stat-meter__fill" style={{ height: `${value}%` }} />
+            </span>
+            <span className="pet-stat-meter__label">{item.label}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function clampStatValue(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  if (value < 0) return 0;
+  if (value > 100) return 100;
+  return Math.round(value);
+}
+
+function isPropDisabled(item: KanshanPropItem, petLifecycle: PetLifecycle): boolean {
+  if (item.count <= 0) return true;
+  if (!item.precondition) return false;
+  return item.precondition !== petLifecycle;
+}
+
+function getPropMenuTitle(item: KanshanPropItem, disabled: boolean): string | undefined {
+  if (!disabled) return item.rewardHint;
+  if (item.count <= 0) return '暂无库存';
+  if (item.precondition === 'sick') return '仅生病时可用';
+  if (item.precondition === 'dead') return '仅死亡时可用';
+  return item.rewardHint;
+}
+
 interface KanshanHoverMenuProps {
-  activeMenuItem: 'pat' | 'props' | 'tasks' | 'chat' | null;
+  activeMenuItem: 'pat' | 'like' | 'props' | 'tasks' | 'chat' | null;
   chatInput: string;
   isActive: boolean;
   isDialogueStreaming: boolean;
@@ -1303,6 +1395,7 @@ interface KanshanHoverMenuProps {
   placement: PetMenuPlacement;
   menuDataStatus: 'idle' | 'loading' | 'ready' | 'error';
   rewardToast: KanshanRewardToast;
+  petLifecycle: string;
   propItems: KanshanPropItem[];
   taskItems: KanshanTaskItem[];
   onPat: () => void;
@@ -1314,7 +1407,7 @@ interface KanshanHoverMenuProps {
   onChatSubmit: () => void;
   onChatFocusChange: (focused: boolean) => void;
   onMenuHoverChange: (hovered: boolean) => void;
-  onActiveMenuItemChange: (item: 'pat' | 'props' | 'tasks' | 'chat' | null) => void;
+  onActiveMenuItemChange: (item: 'pat' | 'like' | 'props' | 'tasks' | 'chat' | null) => void;
   onOpenPanelChange: (panel: 'props' | 'tasks' | 'chat' | null) => void;
 }
 
@@ -1327,6 +1420,7 @@ function KanshanHoverMenu({
   placement,
   menuDataStatus,
   rewardToast,
+  petLifecycle,
   propItems,
   taskItems,
   onPat,
@@ -1358,6 +1452,7 @@ function KanshanHoverMenu({
   useEffect(() => clearCloseMenuTimer, []);
 
   const handleSelectProp = (item: KanshanPropItem) => {
+    if (isPropDisabled(item, petLifecycle)) return;
     onSelectProp(item);
     closeSubmenu();
   };
@@ -1372,7 +1467,7 @@ function KanshanHoverMenu({
     onOpenPanelChange(panel);
   };
 
-  const handlePrimaryHover = (item: 'pat' | 'props' | 'tasks' | 'chat') => {
+  const handlePrimaryHover = (item: 'pat' | 'like' | 'props' | 'tasks' | 'chat') => {
     onActiveMenuItemChange(item);
     if (item === 'props' || item === 'tasks' || item === 'chat') {
       onOpenPanelChange(item);
@@ -1386,6 +1481,10 @@ function KanshanHoverMenu({
     event.preventDefault();
     event.stopPropagation();
     void openExternalUrl(ZHIDA_AI_URL);
+  };
+
+  const handleLikeClick = () => {
+    void openExternalUrl(KANSHAN_LIKE_URL);
   };
 
   const closeMenuForPointerLeave = () => {
@@ -1426,6 +1525,12 @@ function KanshanHoverMenu({
             <span>摸摸它</span>
           </button>
         </div>
+        <div className={`pet-menu-item${activeMenuItem === 'like' ? ' is-open' : ''}`} onPointerEnter={() => handlePrimaryHover('like')} onFocus={() => handlePrimaryHover('like')}>
+          <button className={`pet-menu-button${activeMenuItem === 'like' ? ' is-menu-active' : ''}`} type="button" onClick={handleLikeClick}>
+            <LikeIcon />
+            <span>点赞</span>
+          </button>
+        </div>
         <div className={`pet-menu-item${openPanel === 'props' ? ' is-open' : ''}`} onPointerEnter={() => handlePrimaryHover('props')} onFocus={() => handlePrimaryHover('props')}>
           <button className="pet-menu-button" type="button" aria-haspopup="true" aria-expanded={openPanel === 'props'}>
             <PropIcon />
@@ -1437,15 +1542,18 @@ function KanshanHoverMenu({
               menuDataStatus={menuDataStatus}
               onRetryMenuData={onRetryMenuData}
             >
-              {propItems.map((item) => (
-                <button key={item.id} className="pet-submenu-row" type="button" role="menuitem" onClick={() => handleSelectProp(item)}>
-                  <span className="pet-submenu-label">
-                    <PropItemIcon propId={item.id} />
-                    <span>{item.name}</span>
-                  </span>
-                  <strong>x{item.count}</strong>
-                </button>
-              ))}
+              {propItems.map((item) => {
+                const disabled = isPropDisabled(item, petLifecycle);
+                return (
+                  <button key={item.id} className="pet-submenu-row" type="button" role="menuitem" disabled={disabled} data-menu-title={getPropMenuTitle(item, disabled)} onClick={() => handleSelectProp(item)}>
+                    <span className="pet-submenu-label">
+                      <PropItemIcon propId={item.id} />
+                      <span>{item.name}</span>
+                    </span>
+                    <strong>x{item.count}</strong>
+                  </button>
+                );
+              })}
             </MenuDataContent>
           </div>
         </div>
@@ -1461,7 +1569,7 @@ function KanshanHoverMenu({
               onRetryMenuData={onRetryMenuData}
             >
               {taskItems.map((item) => (
-                <button key={item.id} className="pet-submenu-row" type="button" role="menuitem" onClick={() => handleSelectTask(item)}>
+                <button key={item.id} className="pet-submenu-row" type="button" role="menuitem" disabled={item.action === 'disabled' || item.availableCount >= item.totalCount} data-menu-title={item.disabledHint ?? item.rewardHint} onClick={() => handleSelectTask(item)}>
                   <span>{item.taskName}</span>
                   <strong>{item.availableCount}/{item.totalCount}</strong>
                 </button>
@@ -1566,6 +1674,15 @@ function PatIcon() {
       <path d="M7.4 12.2c-.7-1.7-.3-3.6 1.1-4.5 1.3-.9 3.1-.4 4.2 1.1.7-1.6 2.3-2.4 3.8-1.8 1.7.7 2.3 2.9 1.3 4.9-.8 1.7-2.6 3.3-5.5 4.8-2.5-1.1-4.1-2.6-4.9-4.5Z" />
       <path d="M4.8 8.6c.8-1.4 2-2.5 3.5-3.2" />
       <path d="M19.2 8.6c-.8-1.4-2-2.5-3.5-3.2" />
+    </svg>
+  );
+}
+
+function LikeIcon() {
+  return (
+    <svg className="pet-menu-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7.2 10.5h3.2l1.1-4.3c.3-1.1 1.5-1.7 2.5-1.2.7.4 1.1 1.1 1 1.9l-.4 3.1h3.2c1.2 0 2.1 1.1 1.8 2.3l-1.1 4.9c-.2.9-1 1.6-2 1.6H7.2V10.5Z" />
+      <path d="M4.5 10.5h2.7v8.3H4.5z" />
     </svg>
   );
 }

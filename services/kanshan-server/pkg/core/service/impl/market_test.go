@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -191,6 +193,29 @@ func TestMarketSnapshotAllowsPartialFailures(t *testing.T) {
 	}
 }
 
+func TestParseOKXTickers(t *testing.T) {
+	body := `{"code":"0","msg":"","data":[
+		{"instId":"BTC-USDT","last":"100000","open24h":"99000"},
+		{"instId":"ETH-USDT","last":"3000","open24h":"2900"}
+	]}`
+	quotes, err := parseOKXTickers([]byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(quotes) != 2 {
+		t.Fatalf("want 2 quotes, got %d", len(quotes))
+	}
+	if quotes[0].Key != "btc" || quotes[0].Price != 100000 {
+		t.Fatalf("btc: %+v", quotes[0])
+	}
+	if quotes[0].ChangePercent == nil || *quotes[0].ChangePercent < 1.0 {
+		t.Fatalf("btc change: %+v", quotes[0].ChangePercent)
+	}
+	if quotes[1].Key != "eth" || quotes[1].Price != 3000 {
+		t.Fatalf("eth: %+v", quotes[1])
+	}
+}
+
 func TestParseZhihuHotPayload(t *testing.T) {
 	items, err := parseZhihuHotPayload([]byte(`{
 		"status": 0,
@@ -233,5 +258,98 @@ func TestBuildZhihuHotSignature(t *testing.T) {
 	want := "zRRLMjzRilIfE4KdENBZdhu4zKLTtkeem7t3zvNg9zo="
 	if got != want {
 		t.Fatalf("unexpected signature: got %q want %q", got, want)
+	}
+}
+
+func TestParseZhihuDeveloperHotListBody(t *testing.T) {
+	items, err := parseZhihuDeveloperHotListBody([]byte(`{
+		"Code": 0,
+		"Message": "ok",
+		"Data": {
+			"Items": [
+				{
+					"Title": "开发者热榜标题",
+					"Url": "https://www.zhihu.com/question/999",
+					"Summary": "摘要一行",
+					"ThumbnailUrl": "https://pic.zhihu.com/x.jpg"
+				}
+			]
+		}
+	}`), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Title != "开发者热榜标题" || items[0].URL != "https://www.zhihu.com/question/999" {
+		t.Fatalf("unexpected items: %+v", items)
+	}
+	if items[0].Source != "zhihu-hot" || items[0].Category != "zhihu-hotlist" {
+		t.Fatalf("unexpected meta: %+v", items[0])
+	}
+}
+
+func TestFetchZhihuDeveloperHotListHeadersAndQuery(t *testing.T) {
+	var gotAuth, gotTs, gotLimit string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotTs = r.Header.Get("X-Request-Timestamp")
+		gotLimit = r.URL.Query().Get("Limit")
+		fmt.Fprint(w, `{"Code":0,"Message":"ok","Data":{"Items":[{"Title":"t","Url":"https://www.zhihu.com/q/1","Summary":"s"}]}}`)
+	}))
+	defer srv.Close()
+
+	svc := newMarketService(marketServiceConfig{
+		HTTPClient:        srv.Client(),
+		ZhihuHotURL:       srv.URL + "/hot_list",
+		ZhihuBearer:       "secret-token",
+		ZhihuHotListLimit: 10,
+		ZhihuHotCachePath: filepath.Join(t.TempDir(), "zhihu-hot-cache.json"),
+		ZhihuHotCacheTTL:  3600,
+	})
+	ms := svc.(*marketService)
+	news, err := ms.fetchZhihuHotNews(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotAuth != "Bearer secret-token" {
+		t.Fatalf("Authorization: got %q", gotAuth)
+	}
+	if gotTs == "" {
+		t.Fatal("expected X-Request-Timestamp")
+	}
+	if gotLimit != "10" {
+		t.Fatalf("Limit: got %q want 10", gotLimit)
+	}
+	if len(news) != 1 || news[0].Title != "t" {
+		t.Fatalf("unexpected news: %+v", news)
+	}
+}
+
+func TestZhihuHotListCacheHitWithinTTL(t *testing.T) {
+	var n int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&n, 1)
+		fmt.Fprint(w, `{"Code":0,"Message":"ok","Data":{"Items":[{"Title":"a","Url":"https://www.zhihu.com/q/1","Summary":""}]}}`)
+	}))
+	defer srv.Close()
+	svc := newMarketService(marketServiceConfig{
+		HTTPClient:        srv.Client(),
+		ZhihuHotURL:       srv.URL + "/hot",
+		ZhihuBearer:       "tok",
+		ZhihuHotListLimit: 10,
+		ZhihuHotCacheTTL:  3600,
+		ZhihuHotCachePath: filepath.Join(t.TempDir(), "zhihu-hot.json"),
+	})
+	ms := svc.(*marketService)
+	if _, err := ms.fetchZhihuHotNews(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if atomic.LoadInt32(&n) != 1 {
+		t.Fatalf("want 1 upstream call, got %d", n)
+	}
+	if _, err := ms.fetchZhihuHotNews(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if atomic.LoadInt32(&n) != 1 {
+		t.Fatalf("want cache hit (still 1 upstream call), got %d", n)
 	}
 }

@@ -43,6 +43,9 @@ func (s *fakeInventoryPetState) Tick(context.Context, string) (service.PetSnapsh
 func (s *fakeInventoryPetState) Interact(context.Context, string, string) (service.PetInteractionResult, error) {
 	return service.PetInteractionResult{}, nil
 }
+func (s *fakeInventoryPetState) ApplyTaskEffect(context.Context, string, string) (service.PetInteractionResult, error) {
+	return service.PetInteractionResult{}, nil
+}
 func (s *fakeInventoryPetState) DebugSetState(context.Context, string, service.PetDebugStateInput) (service.PetSnapshot, error) {
 	return service.PetSnapshot{}, nil
 }
@@ -85,21 +88,21 @@ func TestUseAppliesConfiguredItemEffectAndDeductsOneStock(t *testing.T) {
 func TestShouldDanceAfterUseUsesConfiguredThresholds(t *testing.T) {
 	rule := botconfig.ItemActionRewardRule{
 		HighHappinessThreshold:     85,
-		HighHappinessProbability:   0.30,
+		HighHappinessProbability:   1,
 		MediumHappinessThreshold:   65,
-		MediumHappinessProbability: 0.10,
+		MediumHappinessProbability: 0.50,
 		ActionHint:                 "happy-temporary",
 	}
-	if !shouldDanceAfterUse(func() float64 { return 0.29 }, 90, rule) {
-		t.Fatalf("expected happiness >85 to dance below configured 30%% threshold")
+	if !shouldDanceAfterUse(func() float64 { return 0.99 }, 90, rule) {
+		t.Fatalf("expected happiness >85 to always dance")
 	}
-	if shouldDanceAfterUse(func() float64 { return 0.30 }, 90, rule) {
-		t.Fatalf("expected happiness >85 to skip at configured threshold")
+	if !shouldDanceAfterUse(func() float64 { return 0.49 }, 70, rule) {
+		t.Fatalf("expected happiness >65 to dance below configured 50%% threshold")
 	}
-	if !shouldDanceAfterUse(func() float64 { return 0.09 }, 70, rule) {
-		t.Fatalf("expected happiness >65 to dance below configured 10%% threshold")
+	if shouldDanceAfterUse(func() float64 { return 0.50 }, 70, rule) {
+		t.Fatalf("expected happiness >65 to skip at configured threshold")
 	}
-	if shouldDanceAfterUse(func() float64 { return 0.01 }, 60, rule) {
+	if shouldDanceAfterUse(func() float64 { return 0.49 }, 60, rule) {
 		t.Fatalf("expected happiness <=65 to skip")
 	}
 }

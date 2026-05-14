@@ -739,6 +739,80 @@ button[aria-disabled="true"]:hover {
   padding: 5px;
 }
 
+.pet-stats-panel {
+  position: absolute;
+  top: 56%;
+  z-index: 3;
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 14px;
+  background: rgba(17, 20, 23, 0.5);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(14px) saturate(1.18);
+  box-sizing: border-box;
+  opacity: 0;
+  padding: 6px 7px 5px;
+  pointer-events: none;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.pet-stats-panel--right {
+  left: calc(50% + 94px);
+  transform: translate(10px, -50%);
+}
+
+.pet-stats-panel--left {
+  right: calc(50% + 94px);
+  transform: translate(-10px, -50%);
+}
+
+.pet-stats-panel.is-active {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+
+.pet-stat-meter {
+  display: inline-grid;
+  justify-items: center;
+  gap: 3px;
+  color: rgba(255, 254, 249, 0.82);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.pet-stat-meter__track {
+  position: relative;
+  display: block;
+  width: 6px;
+  height: 32px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 254, 249, 0.1);
+}
+
+.pet-stat-meter__fill {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: inherit;
+  background: rgba(247, 210, 145, 0.86);
+}
+
+.pet-stat-meter--happiness .pet-stat-meter__fill {
+  background: rgba(255, 170, 190, 0.86);
+}
+
+.pet-stat-meter--spirit .pet-stat-meter__fill {
+  background: rgba(140, 210, 255, 0.86);
+}
+
 .pet-login-panel {
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 999px;
@@ -882,6 +956,7 @@ button[aria-disabled="true"]:hover {
 }
 
 .pet-submenu-row {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -897,6 +972,37 @@ button[aria-disabled="true"]:hover {
   line-height: 1.2;
   padding: 7px 8px;
   text-align: left;
+}
+
+.pet-submenu-row[data-menu-title]::before {
+  content: attr(data-menu-title);
+  position: absolute;
+  right: 8px;
+  bottom: calc(100% + 4px);
+  z-index: 12;
+  max-width: 132px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(17, 20, 23, 0.86);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+  color: rgba(255, 254, 249, 0.92);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.25;
+  opacity: 0;
+  padding: 4px 6px;
+  pointer-events: none;
+  transform: translateY(2px);
+  transition:
+    opacity 60ms ease,
+    transform 60ms ease;
+  white-space: normal;
+}
+
+.pet-submenu-row[data-menu-title]:hover::before,
+.pet-submenu-row[data-menu-title]:focus-visible::before {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .pet-submenu-label {
@@ -1903,6 +2009,25 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-submenu {
   padding: 4px;
 }
 
+body.kanshan-desktop-mode .glb-stage--desktop .pet-stats-panel,
+.glb-stage .pet-stats-panel {
+  gap: 5px;
+  border-radius: 11px;
+  padding: 5px 6px 4px;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-stat-meter,
+.glb-stage .pet-stat-meter {
+  gap: 2px;
+  font-size: 8px;
+}
+
+body.kanshan-desktop-mode .glb-stage--desktop .pet-stat-meter__track,
+.glb-stage .pet-stat-meter__track {
+  width: 5px;
+  height: 28px;
+}
+
 body.kanshan-desktop-mode
   .glb-stage--desktop
   .pet-hover-menu--right
@@ -2301,9 +2426,20 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
+  align-items: center;
   gap: 12px 14px;
   margin-bottom: 18px;
   margin-top: 8px;
+}
+
+.overview-header__actions .overview-download-primary,
+.overview-header__actions .dropdown-btn,
+.overview-header__actions > .overview-btn {
+  box-sizing: border-box;
+  min-height: 64px;
+  padding: 0 28px;
+  font-size: 0.95rem;
+  font-weight: 700;
 }
 
 .overview-download-primary {
@@ -2493,6 +2629,7 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
 }
 
 .overview-btn {
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3020,7 +3157,7 @@ body.kanshan-desktop-mode .glb-stage--desktop .pet-dialogue-pager button {
 
 .dropdown {
   position: relative;
-  display: inline-block;
+  display: inline-flex;
 }
 
 .dropdown-btn {

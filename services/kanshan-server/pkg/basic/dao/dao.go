@@ -25,31 +25,31 @@ type User struct {
 // Item mirrors items_catalog joined with the per-user user_items row.
 // When a user has no row in user_items the impl returns Qty == 0.
 type Item struct {
-	ItemID               string
-	Name                 string
-	Rarity               string
-	CooldownSec          int
-	EffectJSON           string
-	Precondition         *string
-	ActionHint           string
-	Qty                  int
-	LastUsedAt           *int64
-	ExpireAt             *int64
+	ItemID       string
+	Name         string
+	Rarity       string
+	CooldownSec  int
+	EffectJSON   string
+	Precondition *string
+	ActionHint   string
+	Qty          int
+	LastUsedAt   *int64
+	ExpireAt     *int64
 }
 
 // PetState mirrors the pet_state table.
 type PetState struct {
-	UserID             string
-	Hunger             int
-	Happiness          int
-	Energy             int
-	Health             int
-	Growth             int
-	Mood               string
-	Lifecycle          string
-	LastTickAt         int64
-	SickStartedAt      *int64
-	RunawayStartedAt   *int64
+	UserID           string
+	Hunger           int
+	Happiness        int
+	Energy           int
+	Health           int
+	Growth           int
+	Mood             string
+	Lifecycle        string
+	LastTickAt       int64
+	SickStartedAt    *int64
+	RunawayStartedAt *int64
 }
 
 // Task mirrors tasks_catalog joined with the per-user user_tasks row.
@@ -71,6 +71,16 @@ type StatsEvent struct {
 	EventType  string
 	PayloadRaw string
 	OccurredAt int64
+}
+
+// ChatTurn mirrors one persisted user/assistant exchange.
+type ChatTurn struct {
+	ID        int64
+	UserID    string
+	Query     string
+	Answer    string
+	CreatedAt int64
+	UpdatedAt int64
 }
 
 // ===== Errors =====
@@ -131,8 +141,20 @@ type TaskDao interface {
 	UpsertProgress(ctx context.Context, userID, taskID, periodKey string, doneCount int, rewarded bool, doneAt *int64) error
 }
 
+// InteractionCountDao stores per-period interaction counters such as daily pat limits.
+type InteractionCountDao interface {
+	GetCount(ctx context.Context, userID, action, periodKey string) (int, error)
+	Increment(ctx context.Context, userID, action, periodKey string) (int, error)
+}
+
 // StatsDao persists raw events for later aggregation.
 type StatsDao interface {
 	// Append writes one event. Idempotency / aggregation is the service layer's job.
 	Append(ctx context.Context, e StatsEvent) error
+}
+
+// ChatHistoryDao persists recent chat turns per user.
+type ChatHistoryDao interface {
+	ListRecent(ctx context.Context, userID string, limit int) ([]ChatTurn, error)
+	Append(ctx context.Context, userID, query, answer string, keep int) (ChatTurn, error)
 }

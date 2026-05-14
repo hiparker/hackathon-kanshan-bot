@@ -4,7 +4,7 @@ import type { PetAction } from '@kanshan/bridge';
 import UnicornScene from 'unicornstudio-react';
 
 const MAC_ARM_DOWNLOAD_URL = import.meta.env.VITE_KANSHAN_DOWNLOAD_MAC_ARM_URL || 'https://upload.bedebug.com/hackathon-2026/kanshan-darwin-aarch64.zip';
-const MAC_INTEL_DOWNLOAD_URL = import.meta.env.VITE_KANSHAN_DOWNLOAD_MAC_INTEL_URL || 'https://github.com/hiparker/hackathon-kanshan-bot/releases/download/v1.0.10/_1.0.4_x64.dmg';
+const MAC_INTEL_DOWNLOAD_URL = import.meta.env.VITE_KANSHAN_DOWNLOAD_MAC_INTEL_URL || 'https://github.com/hiparker/hackathon-kanshan-bot/releases/download/v1.0.12/Liu-Kanshan_1.0.4_macos_intel_unsigned.zip';
 const WINDOWS_DOWNLOAD_URL = import.meta.env.VITE_KANSHAN_DOWNLOAD_WINDOWS_URL || 'https://upload.bedebug.com/hackathon-2026/kanshan-exe.zip';
 
 export interface OverviewPageProps {
@@ -20,6 +20,8 @@ export interface OverviewPageProps {
   lastUserMessage?: string;
   chatError?: string;
 }
+
+const APP_VERSION = '2.0.3';
 
 function IconDownload() {
   return (
@@ -85,7 +87,7 @@ export function OverviewPage({
 
   const options = [
     { label: 'Mac 版 (Apple Silicon)', ext: '.zip', url: MAC_ARM_DOWNLOAD_URL },
-    { label: 'Mac 版 (Intel)', ext: '.dmg', url: MAC_INTEL_DOWNLOAD_URL },
+    { label: 'Mac 版 (Intel)', ext: '.zip', url: MAC_INTEL_DOWNLOAD_URL },
     { label: 'Windows 版', ext: '.zip', url: WINDOWS_DOWNLOAD_URL },
   ];
 

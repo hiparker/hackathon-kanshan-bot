@@ -5,17 +5,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/basic/dao"
 	daoimpl "github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/basic/dao/impl"
+	botconfig "github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/business/kanshan-bot/config"
 	"github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/core/service"
 )
 
 type taskService struct {
-	dao dao.TaskDao
-	inv service.InventoryService
-	now func() time.Time
+	dao      dao.TaskDao
+	inv      service.InventoryService
+	petState service.PetStateService
+	random   func() float64
+	rules    botconfig.Rules
+	now      func() time.Time
 }
 
 // NewTaskService returns a service.TaskService backed by the dao/impl
@@ -23,9 +28,12 @@ type taskService struct {
 // clock should construct taskService directly inside this package.
 func NewTaskService() service.TaskService {
 	return &taskService{
-		dao: daoimpl.NewTaskDao(),
-		inv: NewInventoryService(),
-		now: time.Now,
+		dao:      daoimpl.NewTaskDao(),
+		inv:      NewInventoryService(),
+		petState: NewPetStateService(),
+		random:   rand.Float64,
+		rules:    botconfig.MustLoadRules(),
+		now:      time.Now,
 	}
 }
 
@@ -49,9 +57,6 @@ func (s *taskService) Progress(ctx context.Context, userID, taskID string, delta
 	if taskID == "" {
 		return service.ProgressResult{}, service.ErrBadRequest
 	}
-	if delta == 0 {
-		delta = 1
-	}
 
 	t, err := s.lookup(ctx, userID, taskID)
 	if err != nil {
@@ -59,7 +64,10 @@ func (s *taskService) Progress(ctx context.Context, userID, taskID string, delta
 	}
 
 	periodKey := s.periodKeyFor(t.Type)
-	t.DoneCount += delta
+	progressed := t.DoneCount < t.TargetCount
+	if t.DoneCount < t.TargetCount {
+		t.DoneCount++
+	}
 	if t.DoneCount > t.TargetCount {
 		t.DoneCount = t.TargetCount
 	}
@@ -83,6 +91,12 @@ func (s *taskService) Progress(ctx context.Context, userID, taskID string, delta
 		return service.ProgressResult{}, service.ErrInternal
 	}
 
+	if progressed {
+		if reward, ok := s.pickTaskReward(taskID); ok {
+			granted = append(granted, reward)
+		}
+	}
+
 	if len(granted) > 0 {
 		for _, rw := range granted {
 			if rw.Kind == "item" && rw.ItemID != "" && rw.Qty > 0 {
@@ -102,7 +116,51 @@ func (s *taskService) Progress(ctx context.Context, userID, taskID string, delta
 	if err != nil {
 		return service.ProgressResult{}, service.ErrInternal
 	}
-	return service.ProgressResult{Task: view, RewardsGranted: granted}, nil
+
+	var newState *service.PetSnapshot
+	var actionHint string
+	if progressed && s.hasTaskEffect(taskID) {
+		res, err := s.petState.ApplyTaskEffect(ctx, userID, taskID)
+		if err != nil {
+			return service.ProgressResult{}, err
+		}
+		state := res.NewState
+		newState = &state
+		actionHint = res.ActionHint
+	}
+
+	return service.ProgressResult{Task: view, RewardsGranted: granted, NewState: newState, ActionHint: actionHint}, nil
+}
+
+func (s *taskService) pickTaskReward(taskID string) (service.Reward, bool) {
+	rules := s.rulesForUse().TaskRewards[taskID]
+	if len(rules) == 0 || s.random == nil {
+		return service.Reward{}, false
+	}
+	roll := s.random()
+	cumulative := 0.0
+	for _, rule := range rules {
+		if rule.ItemID == "" || rule.Qty <= 0 || rule.Probability <= 0 {
+			continue
+		}
+		cumulative += rule.Probability
+		if roll < cumulative {
+			return service.Reward{Kind: "item", ItemID: rule.ItemID, Qty: rule.Qty}, true
+		}
+	}
+	return service.Reward{}, false
+}
+
+func (s *taskService) hasTaskEffect(taskID string) bool {
+	rule, ok := s.rulesForUse().TaskEffects[taskID]
+	return ok && len(rule.Effect) > 0
+}
+
+func (s *taskService) rulesForUse() botconfig.Rules {
+	if s.rules.Interactions == nil && s.rules.Items == nil && s.rules.TaskRewards == nil && s.rules.TaskEffects == nil {
+		s.rules = botconfig.MustLoadRules()
+	}
+	return s.rules
 }
 
 // lookup resolves task metadata + per-period progress with two cheap reads:

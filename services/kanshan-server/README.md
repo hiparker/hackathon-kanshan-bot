@@ -141,13 +141,23 @@ basic/dao/impl    → db（仅为读 embed.FS）
 | `MARKET_INDEX_URL` | `新浪指数行情 URL` | 可选覆盖上证/深证/NASDAQ/恒生公开源 |
 | `MARKET_DAILY_NEWS_URL` | `https://orz.ai/api/v1/dailynews/?platform=tenxunwang` | 可选覆盖腾讯新闻源 |
 | `MARKET_HOT_NEWS_URL` | `https://api.tcslw.cn/api/hotlist/eastmoney?type=102` | 可选覆盖东方财富快讯源 |
-| `MARKET_ZHIHU_HOT_URL` | `https://openapi.zhihu.com/openapi/billboard/list` | 知乎社区真实讨论热榜接口完整 URL |
-| `MARKET_ZHIHU_HOT_APP_KEY` |  | 知乎热榜接口 `X-App-Key`，填用户 token，勿提交真实值 |
-| `MARKET_ZHIHU_HOT_APP_SECRET` |  | 知乎热榜接口签名密钥，勿提交真实值 |
+| `MARKET_ZHIHU_HOT_URL` | 见下 | 未设置时：若配置了 Bearer 则默认为 `https://developer.zhihu.com/api/v1/content/zhihu_search`；否则为 `https://openapi.zhihu.com/openapi/billboard/list` |
+| `MARKET_ZHIHU_HOT_BEARER` |  | 可选：`zhihu_search` 的 `Authorization: Bearer`，与 `ZHIHU_SECRET` 二选一即可 |
+| `ZHIHU_SECRET` |  | 未设 `MARKET_ZHIHU_HOT_BEARER` 时可用作 Bearer |
+| `MARKET_ZHIHU_SEARCH_QUERY` | `怎么理解rave文化` | `zhihu_search` 的 `Query` |
+| `MARKET_ZHIHU_SEARCH_COUNT` | `5` | `zhihu_search` 的 `Count`（条数） |
+| `MARKET_ZHIHU_HOT_APP_KEY` |  | OpenAPI 热榜：`X-App-Key`（与 Bearer 二选一） |
+| `MARKET_ZHIHU_HOT_APP_SECRET` |  | OpenAPI 热榜：HMAC 签名密钥，勿提交真实值 |
 | `MARKET_ZHIHU_HOT_EXTRA_INFO` |  | 可选：知乎热榜接口 `X-Extra-Info` |
-| `MARKET_ZHIHU_HOT_TOP_CNT` | `50` | 知乎热榜拉取数量 |
-| `MARKET_ZHIHU_HOT_PUBLISH_IN_HOURS` | `48` | 知乎热榜发布时间范围（小时） |
+| `MARKET_ZHIHU_HOT_TOP_CNT` | `50` | 仅 OpenAPI billboard：`top_cnt` |
+| `MARKET_ZHIHU_HOT_PUBLISH_IN_HOURS` | `48` | 仅 OpenAPI billboard：`publish_in_hours` |
 | `ZHIHU_OAUTH_*` |  | P0 不使用，P3 接入 OAuth2 时填 |
+| `ZHIHU_CHAT_COMPLETIONS_URL` | `https://developer.zhihu.com/v1/chat/completions` | 知乎模型服务 Chat Completions 接口，可替换为其他兼容接口 |
+| `ZHIHU_CHAT_MODEL` | `zhida-fast-1p5` | 后端代理调用的底层模型名 |
+| `ZHIHU_CHAT_TIMEOUT_SEC` | `45` | 后端代理等待模型服务响应的超时时间，单位秒 |
+| `ZHIHU_CHAT_MERGE_SYSTEM_TO_USER` | `true` | 是否把 `system` 消息合并进第一条 `user` 消息；用于兼容不稳定支持 `system` 的模型 |
+| `ZHIHU_CHAT_HISTORY_LIMIT` | `10` | 每个用户保留的最近多轮对话轮数，每轮包含 query 和 answer |
+| `ZHIHU_CHAT_ACCESS_SECRET` |  | 知乎模型服务 Access Secret，勿提交真实值 |
 
 ## 开发命令
 

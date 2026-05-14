@@ -12,7 +12,8 @@ use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+    Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    WindowEvent,
 };
 use tauri_plugin_deep_link::DeepLinkExt;
 
@@ -429,12 +430,7 @@ fn spawn_cursor_passthrough_loop(window: WebviewWindow) {
             passthrough_poll_tick = passthrough_poll_tick.wrapping_add(1);
             if passthrough_poll_tick % 64 == 1 {
                 let user_off = std::env::var("KANSHAN_DISABLE_CURSOR_PASSTHROUGH")
-                    .map(|v| {
-                        matches!(
-                            v.trim().as_ref(),
-                            "1" | "true" | "yes" | "on" | "y"
-                        )
-                    })
+                    .map(|v| matches!(v.trim().as_ref(), "1" | "true" | "yes" | "on" | "y"))
                     .unwrap_or(false);
                 let multi_display = window
                     .available_monitors()
@@ -550,13 +546,13 @@ fn spawn_drag_follow_loop(window: WebviewWindow) {
             let Some(state) = window.try_state::<DragState>() else {
                 continue;
             };
-            let (follow, snap_edge, stage_x_logical, stage_y_logical) = {
+            let (follow, stage_x_logical, stage_y_logical, interactive_regions) = {
                 let inner = state.0.lock().unwrap();
                 (
                     inner.follow,
-                    inner.snap_edge,
                     inner.stage_x_logical,
                     inner.stage_y_logical,
+                    inner.interactive_regions.clone(),
                 )
             };
             if !follow.active {
@@ -590,12 +586,13 @@ fn spawn_drag_follow_loop(window: WebviewWindow) {
                 continue;
             };
             let scale = window.scale_factor().unwrap_or(1.0);
-            let stage_bounds = StageBounds {
-                x: stage_x_logical * scale,
-                y: stage_y_logical * scale,
-                width: DESKTOP_STAGE_SIZE * scale,
-                height: DESKTOP_STAGE_SIZE * scale,
-            };
+            let stage_size = DESKTOP_STAGE_SIZE * scale;
+            let stage_bounds = resolve_stage_bounds(
+                &interactive_regions,
+                stage_x_logical * scale,
+                stage_y_logical * scale,
+                stage_size,
+            );
 
             let should_refresh_monitors = drag_monitors.is_empty()
                 || last_monitor_refresh
@@ -613,18 +610,16 @@ fn spawn_drag_follow_loop(window: WebviewWindow) {
                 let (wl, wt, wr, wb) = work_area_bounds(&work);
                 let mut target_x = cursor.x - follow.cursor_offset_x;
                 let mut target_y = cursor.y - follow.cursor_offset_y;
-                let target_stage = stage_rect_at(target_x, target_y, stage_bounds);
-                let next_edge = horizontal_edge_for_stage_center(target_stage, wl, wr);
-                if next_edge != snap_edge {
-                    set_snap_edge_only(&window, next_edge);
-                }
-
                 let min_x = wl - stage_bounds.x;
                 let max_x = wr - stage_bounds.width - stage_bounds.x;
                 let min_y = wt - stage_bounds.y;
                 let max_y = wb - stage_bounds.height - stage_bounds.y;
                 target_x = target_x.clamp(min_x, max_x.max(min_x));
                 target_y = target_y.clamp(min_y, max_y.max(min_y));
+
+                let target_stage = stage_rect_at(target_x, target_y, stage_bounds);
+                let next_edge = horizontal_edge_for_stage_center(target_stage, wl, wr);
+                set_snap_edge_only(&window, next_edge);
 
                 let target = (target_x.round() as i32, target_y.round() as i32);
                 if last_target != Some(target) {

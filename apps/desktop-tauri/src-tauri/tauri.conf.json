@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "刘看山",
-  "version": "1.0.4",
+  "version": "2.0.3",
   "identifier": "com.zhihu.kanshan.bot",
   "build": {
     "beforeDevCommand": "pnpm --filter @kanshan/react-host dev:desktop",
