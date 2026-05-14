@@ -52,9 +52,15 @@ interface MarketErrorEnvelope {
   error: string;
 }
 
+interface WellnessReminderEnvelope {
+  type: 'wellness_reminder';
+  text?: string;
+}
+
 interface ConnectKanshanMarketStreamOptions {
   onSnapshot: (snapshot: KanshanMarketSnapshot) => void;
   onError?: (error: string) => void;
+  onWellnessReminder?: (text: string) => void;
 }
 
 const DEFAULT_API_BASE_URL = import.meta.env.PROD ? 'https://kanshan.bedebug.com' : 'http://localhost:8787';
@@ -132,9 +138,17 @@ export function connectKanshanMarketStream(options: ConnectKanshanMarketStreamOp
 
     socket.addEventListener('message', (event) => {
       try {
-        const payload = JSON.parse(String(event.data)) as MarketSnapshotEnvelope | MarketErrorEnvelope;
+        const payload = JSON.parse(String(event.data)) as
+          | MarketSnapshotEnvelope
+          | MarketErrorEnvelope
+          | WellnessReminderEnvelope;
         if (payload.type === 'market_snapshot' && payload.data) {
           options.onSnapshot(payload.data);
+          return;
+        }
+        if (payload.type === 'wellness_reminder') {
+          const text = typeof payload.text === 'string' ? payload.text.trim() : '';
+          if (text) options.onWellnessReminder?.(text);
           return;
         }
         if (payload.type === 'market_error') {

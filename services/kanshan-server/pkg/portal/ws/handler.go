@@ -17,7 +17,16 @@ import (
 	serviceimpl "github.com/zhihu/hackathon-kanshan-bot/services/kanshan-server/pkg/core/service/impl"
 )
 
-const defaultPushInterval = 60 * time.Second
+const (
+	defaultPushInterval        = 60 * time.Second
+	drinkWaterReminderInterval = 2 * time.Hour
+	eyeRestReminderInterval    = 1 * time.Hour
+)
+
+const (
+	msgDrinkWater = "该喝水了"
+	msgEyeRest    = "该揉揉眼睛了"
+)
 
 // Handler hosts websocket streaming endpoints.
 type Handler struct {
@@ -31,6 +40,7 @@ type messageEnvelope struct {
 	IntervalSec int                     `json:"interval_sec,omitempty"`
 	Data        *service.MarketSnapshot `json:"data,omitempty"`
 	Error       string                  `json:"error,omitempty"`
+	Text        string                  `json:"text,omitempty"`
 }
 
 // New builds a /ws handler with its own MarketService.
@@ -73,6 +83,10 @@ func (h *Handler) streamMarket(w http.ResponseWriter, r *http.Request) {
 
 	ticker := time.NewTicker(h.interval)
 	defer ticker.Stop()
+	waterTicker := time.NewTicker(drinkWaterReminderInterval)
+	defer waterTicker.Stop()
+	eyesTicker := time.NewTicker(eyeRestReminderInterval)
+	defer eyesTicker.Stop()
 
 	for {
 		select {
@@ -84,8 +98,23 @@ func (h *Handler) streamMarket(w http.ResponseWriter, r *http.Request) {
 			if !h.writeSnapshot(conn, r.Context()) {
 				return
 			}
+		case <-waterTicker.C:
+			if !h.writeWellnessReminder(conn, msgDrinkWater) {
+				return
+			}
+		case <-eyesTicker.C:
+			if !h.writeWellnessReminder(conn, msgEyeRest) {
+				return
+			}
 		}
 	}
+}
+
+func (h *Handler) writeWellnessReminder(conn *websocket.Conn, text string) bool {
+	return h.writeJSON(conn, messageEnvelope{
+		Type: "wellness_reminder",
+		Text: text,
+	})
 }
 
 func (h *Handler) writeSnapshot(conn *websocket.Conn, parent context.Context) bool {

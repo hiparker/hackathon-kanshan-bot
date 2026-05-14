@@ -533,6 +533,15 @@ export function App() {
         applyMarketDialogue(nextText, candidate?.url);
         playAction(chooseKanshanMarketReactionAction(snapshot));
       },
+      onWellnessReminder(text) {
+        if (!isCurrent) return;
+        const isChatCoolingDown = Date.now() - lastChatInteractionAtRef.current < CHAT_MARKET_DIALOGUE_COOLDOWN_MS;
+        if (isSendingRef.current || chatInputRef.current.trim().length > 0 || isChatCoolingDown) {
+          return;
+        }
+        applyMarketDialogue(`看山提醒：${text}`);
+        playAction('happy');
+      },
     });
     return () => {
       isCurrent = false;
