@@ -8,7 +8,7 @@ import carouselLuo1 from '../pics/luo1.jpeg';
 import carouselLuo2 from '../pics/luo2.jpeg';
 import carouselLuo3 from '../pics/luo3.jpeg';
 import carouselLuo4 from '../pics/luo4.jpeg';
-import carouselLuo5 from '../pics/luo5.png';
+import carouselLuo5 from '../pics/luo5.jpeg';
 import demoSp1 from '../pics/sp1.mov';
 import demoSp2 from '../pics/sp2.mov';
 import demoSp3 from '../pics/sp3.mov';
