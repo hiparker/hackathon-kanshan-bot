@@ -1,5 +1,5 @@
 import React, { useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import type { KanshanRuntimeBridge, PetAction, PetRuntimeEvent } from '@kanshan/bridge';
+import type { KanshanRuntimeBridge, PetAction } from '@kanshan/bridge';
 import { createKanshanThreeRuntime } from '@kanshan/three-runtime';
 import {
   kanshanActionMeta,
@@ -9,6 +9,9 @@ import {
   resolveKanshanClipName,
 } from './kanshanActionConfig';
 import type { KanshanPropItem, KanshanTaskItem } from './kanshanMenuData';
+
+/** 模型加载条：假进度约 60s 内随机缓涨，真实就绪后一次性拉满 */
+const FAKE_MODEL_LOAD_DURATION_MS = 60_000;
 
 export interface KanshanModelPreviewHandle {
   playRawClip(clipName: string): void;
@@ -357,6 +360,7 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
     const playbackModeRef = useRef<'semantic' | 'raw'>('semantic');
     const dialogueTimerRef = useRef<number | null>(null);
     const [modelLoadStatus, setModelLoadStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+    const [displayLoadPercent, setDisplayLoadPercent] = useState(0);
     const stageHoverGraceTimerRef = useRef<number | null>(null);
     const dialogueHoverGraceTimerRef = useRef<number | null>(null);
     const desktopWindowDragRef = useRef<DesktopWindowDragState | null>(null);
@@ -666,6 +670,46 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
 
       onClipNamesChange?.([]);
       setModelLoadStatus('loading');
+      setDisplayLoadPercent(0);
+
+      let cancelled = false;
+      const modelReadyRef = { current: false };
+      const fakeCapRef = { current: 90 + Math.random() * 7 };
+      const loadStartedAtRef = { current: Date.now() };
+      let bumpTimer: ReturnType<typeof window.setTimeout> | null = null;
+
+      const clearBumpTimer = () => {
+        if (bumpTimer !== null) {
+          window.clearTimeout(bumpTimer);
+          bumpTimer = null;
+        }
+      };
+
+      const scheduleFakeProgressBump = () => {
+        clearBumpTimer();
+        if (cancelled || modelReadyRef.current) return;
+        const delay = 480 + Math.floor(Math.random() * 1400);
+        bumpTimer = window.setTimeout(() => {
+          bumpTimer = null;
+          if (cancelled || modelReadyRef.current) return;
+          setDisplayLoadPercent((prev) => {
+            const elapsed = Date.now() - loadStartedAtRef.current;
+            const t = Math.min(1, elapsed / FAKE_MODEL_LOAD_DURATION_MS);
+            const curve = t * t;
+            const softCeiling = fakeCapRef.current * (0.1 + 0.9 * curve);
+            const bump = 0.15 + Math.random() * 2.35;
+            const raw = prev + bump;
+            const jitter = Math.random() * 2.5;
+            return Math.min(
+              fakeCapRef.current - 0.04,
+              Math.max(prev, Math.min(raw, softCeiling + jitter)),
+            );
+          });
+          scheduleFakeProgressBump();
+        }, delay);
+      };
+      scheduleFakeProgressBump();
+
       const runtime = createKanshanThreeRuntime({ canvas, clipMap: kanshanClipMap, materialMode: 'pbr', modelUrl });
       runtimeRef.current = runtime;
       playbackModeRef.current = 'semantic';
@@ -683,13 +727,22 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
         }
       };
       const unsubscribe = runtime.onEvent((event) => {
-        if (event.type === 'animationClipMapReady') setModelLoadStatus('ready');
-        if (event.type === 'error' && event.code === 'MODEL_LOAD_FAILED') setModelLoadStatus('error');
+        if (event.type === 'animationClipMapReady') {
+          modelReadyRef.current = true;
+          clearBumpTimer();
+          setDisplayLoadPercent(100);
+          setModelLoadStatus('ready');
+          onClipNamesChange?.(event.clipNames);
+        }
+        if (event.type === 'error' && event.code === 'MODEL_LOAD_FAILED') {
+          modelReadyRef.current = true;
+          clearBumpTimer();
+          setModelLoadStatus('error');
+        }
         if (event.type === 'actionEnd') onActionEnd?.(event.action);
         if (event.type === 'animationClipStart') showClipDialogue(event.clipName, event.durationMs);
         if (event.type === 'rawClipStart') showClipDialogue(event.clipName, event.durationMs);
         if (event.type === 'rawClipEnd' && event.clipName === patClipNameRef.current) onPatEnd();
-        if (event.type === 'animationClipMapReady') onClipNamesChange?.(event.clipNames);
       });
 
       const resize = () => runtime.resize?.();
@@ -700,6 +753,9 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
       resize();
 
       return () => {
+        cancelled = true;
+        modelReadyRef.current = true;
+        clearBumpTimer();
         resizeObserver.disconnect();
         window.removeEventListener('resize', resize);
         unsubscribe();
@@ -1072,9 +1128,20 @@ export const KanshanModelPreview = React.forwardRef<KanshanModelPreviewHandle, K
         />
         {!desktopMode && modelLoadStatus !== 'ready' ? (
           <div className={`model-loading-overlay model-loading-overlay--${modelLoadStatus}`} role="status" aria-live="polite">
-            <span className="model-loading-spinner" aria-hidden="true" />
             <strong>{modelLoadStatus === 'error' ? '模型加载失败' : '正在加载看山模型'}</strong>
-            <span>{modelLoadStatus === 'error' ? '请刷新页面重试。' : '首次加载文件较大，请稍等。'}</span>
+            {modelLoadStatus === 'loading' ? (
+              <p className="model-load-hint">真实 3D 模型,体积较大,请耐心等待。</p>
+            ) : null}
+            {modelLoadStatus === 'loading' ? (
+              <div className="model-load-track" aria-hidden="false">
+                <div className="model-load-fill" style={{ width: `${Math.min(100, Math.round(displayLoadPercent))}%` }} />
+              </div>
+            ) : null}
+            <span className="model-load-caption">
+              {modelLoadStatus === 'error'
+                ? '请刷新页面重试。'
+                : `加载中 ${Math.min(100, Math.round(displayLoadPercent))}%`}
+            </span>
           </div>
         ) : null}
         {ownerName ? <p className="stage-owner-label">{ownerName}的刘看山</p> : null}

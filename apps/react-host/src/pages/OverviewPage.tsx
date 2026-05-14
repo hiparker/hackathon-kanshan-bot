@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { PetAction } from '@kanshan/bridge';
-import { Link } from 'react-router-dom';
 import UnicornScene from 'unicornstudio-react';
 
 const MAC_ARM_DOWNLOAD_URL = import.meta.env.VITE_KANSHAN_DOWNLOAD_MAC_ARM_URL || 'https://upload.bedebug.com/hackathon-2026/kanshan-darwin-aarch64.zip';
@@ -22,47 +21,12 @@ export interface OverviewPageProps {
   chatError?: string;
 }
 
-const APP_VERSION = '0.1.0';
-
 function IconDownload() {
   return (
     <svg className="overview-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden>
       <path
         fill="currentColor"
         d="M12 3a1 1 0 0 1 1 1v9.586l2.293-2.293a1 1 0 1 1 1.414 1.414l-4 4a1 1 0 0 1-1.414 0l-4-4a1 1 0 1 1 1.414-1.414L11 13.586V4a1 1 0 0 1 1-1zm-7 14a1 1 0 0 1 1 1v2h14v-2a1 1 0 1 1 2 0v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1z"
-      />
-    </svg>
-  );
-}
-
-function IconFolder() {
-  return (
-    <svg className="overview-icon overview-icon--accent" width="22" height="22" viewBox="0 0 24 24" aria-hidden>
-      <path
-        fill="currentColor"
-        d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"
-      />
-    </svg>
-  );
-}
-
-function IconDoc() {
-  return (
-    <svg className="overview-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden>
-      <path
-        fill="currentColor"
-        d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2 5 5h-4a1 1 0 0 1-1-1V4zM8 18h8v-2H8v2zm0-4h8v-2H8v2zm0-4h5v-2H8v2z"
-      />
-    </svg>
-  );
-}
-
-function IconChat() {
-  return (
-    <svg className="overview-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden>
-      <path
-        fill="currentColor"
-        d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8l-4 4v-4H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm2 4h12v2H6V8zm0 4h8v2H6v-2z"
       />
     </svg>
   );
@@ -106,14 +70,14 @@ export function OverviewPage({
   shellClass,
   children,
   onPlayAction,
-  chatInput,
-  onChatInputChange,
-  onChatSubmit,
-  onChatInputKeyDown,
-  isSending,
-  chatText,
-  lastUserMessage,
-  chatError,
+  chatInput: _chatInput,
+  onChatInputChange: _onChatInputChange,
+  onChatSubmit: _onChatSubmit,
+  onChatInputKeyDown: _onChatInputKeyDown,
+  isSending: _isSending,
+  chatText: _chatText,
+  lastUserMessage: _lastUserMessage,
+  chatError: _chatError,
 }: OverviewPageProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [selected, setSelected] = useState('Mac 版 (Apple Silicon)');
